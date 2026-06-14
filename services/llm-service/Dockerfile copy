@@ -1,0 +1,27 @@
+# services/llm-service/Dockerfile
+FROM python:3.11-slim
+
+WORKDIR /app
+
+ARG PIP_INDEX_URL=https://mirror-pypi.runflare.com/simple
+
+COPY requirements.txt .
+RUN pip install -r requirements.txt --index-url ${PIP_INDEX_URL}
+
+RUN pip install faiss-cpu --index-url ${PIP_INDEX_URL}
+
+RUN pip install -v sentence-transformers --index-url ${PIP_INDEX_URL}
+RUN pip install langchain-huggingface --index-url ${PIP_INDEX_URL}
+
+# Copy shared module
+COPY shared/ ./shared/
+RUN pip install ./shared --index-url ${PIP_INDEX_URL}
+
+# Copy LLM service - note: this copies contents of src/ to /app/src/
+COPY services/llm-service/ ./
+# COPY services/llm-service/models/jina-embeddings-v3 /app/models/jina-embeddings-v3
+
+ENV PYTHONPATH=/app
+
+# Use dot notation for module path: src.workers.worker
+CMD ["python", "-m", "src.workers.worker"]

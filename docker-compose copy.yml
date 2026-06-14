@@ -1,0 +1,106 @@
+services:
+  kafka:
+    image: apache/kafka:latest
+    container_name: rag-kafka
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,INTERNAL://0.0.0.0:29092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,INTERNAL://kafka:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_LOG_DIRS: /var/lib/kafka/data  # Changed from /tmp/kraft-combined-logs
+      KAFKA_NUM_PARTITIONS: 3
+      KAFKA_CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+    volumes:
+      - kafka-data:/var/lib/kafka/data  # Updated volume path
+    networks:
+      - rag-net
+
+  kafdrop:
+    image: obsidiandynamics/kafdrop
+    container_name: rag-kafdrop
+    ports:
+      - "9000:9000"
+    environment:
+      KAFKA_BROKERCONNECT: "kafka:29092"
+      JVM_OPTS: "-Xms32M -Xmx64M"
+      SERVER_SERVLET_CONTEXTPATH: "/"
+    depends_on:
+      - kafka
+    networks:
+      - rag-net
+
+
+  rag-chat-service:
+    build:
+      context: .
+      dockerfile: services/elearning-service/Dockerfile
+    container_name: rag-chat-service
+    ports:
+      - "8000:8000"
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - DATABASE_URL=sqlite:///./data/database.db
+      - ENVIRONMENT=production
+    volumes:
+      - ../../shared:/app/shared
+      - rag-chat-data:/app/data
+    depends_on:
+      - kafka
+    networks:
+      - rag-net
+    working_dir: /app
+
+  rag-llm-service:
+      build:
+        context: .
+        dockerfile: services/llm-service/Dockerfile
+      container_name: rag-llm-service
+      environment:
+        - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+        - INPUT_TOPIC=prompt-answer-requests
+        - OUTPUT_TOPIC=prompt-answer-completed
+        - CONSUMER_GROUP=llm-worker-group
+      volumes:
+        - ../../shared:/app/shared
+      depends_on:
+        - kafka
+      networks:
+        - rag-net
+      working_dir: /app
+
+    # ============================================
+    # Frontend Service
+    # ============================================
+      
+  react-app:
+    build:
+      context: ./rag-react-app
+      dockerfile: Dockerfile
+    container_name: rag-react-app
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000
+      - REACT_APP_WS_URL=ws://localhost:8000
+    depends_on:
+      - rag-chat-service
+    networks:
+      - rag-net
+
+
+networks:
+  rag-net:
+    driver: bridge
+
+volumes:
+  kafka-data:
+  rag-chat-data:

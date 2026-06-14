@@ -1,0 +1,53 @@
+# llm-service/src/dependencies.py
+from __future__ import annotations
+import os
+
+from injector import Binder, Module, SingletonScope, Injector
+from common.kafka.producer import KafkaProducer, get_producer
+from common.events import PromptAnswerRequestedEvent, DocumentUploadedEvent
+from src.services.llm_service import LLMService
+from src.services.embedding_service import EmbeddingService
+from src.core.document_loader import DocumentLoader
+from src.core.text_chunker import TextChunker
+from src.core.text_preprocessor import TextPreprocessor
+from src.services.rag_service import RagService
+from src.handlers.document_uploaded_handler import DocumentUploadedHandler
+from src.handlers.prompt_answer_requested_handler import PromptAnswerRequestedHandler
+
+
+def get_kafka_producer() -> KafkaProducer:
+    """Factory function for Kafka producer"""
+    bootstrap_servers = os.getenv('KAFKA_BOOTSTRAP_SERVERS', 'localhost:9092')
+    return get_producer(bootstrap_servers=bootstrap_servers)
+
+
+# ============================================
+# Event to Handler Mapping
+# ============================================
+
+EVENT_HANDLER_MAP = {
+    PromptAnswerRequestedEvent: PromptAnswerRequestedHandler,
+    DocumentUploadedEvent: DocumentUploadedHandler,
+}
+
+
+class DependencyInjection(Module):
+    """Dependency injection configuration for LLM service"""
+    
+    def configure(self, binder: Binder):
+        # Bind services
+        binder.bind(KafkaProducer, to=get_kafka_producer, scope=SingletonScope)
+        binder.bind(LLMService, scope=SingletonScope)
+        binder.bind(EmbeddingService, scope=SingletonScope)  # Added
+        binder.bind(DocumentLoader, scope=SingletonScope)
+        binder.bind(TextPreprocessor, scope=SingletonScope)
+        binder.bind(TextChunker, scope=SingletonScope)
+        binder.bind(RagService, scope=SingletonScope)
+        
+        # Bind handlers
+        binder.bind(DocumentUploadedHandler, scope=SingletonScope)
+        binder.bind(PromptAnswerRequestedHandler, scope=SingletonScope)
+
+
+# Create injector instance
+injector = Injector([DependencyInjection()])

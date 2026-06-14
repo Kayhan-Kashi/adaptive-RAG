@@ -1,0 +1,68 @@
+# Python virtual environment
+.venv/
+venv/
+env/
+ENV/
+
+# Models directory (often contains large binary files)
+models/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Environment variables
+.env
+.venv
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Models
+models/
+*.pkl
+*.h5
+*.pt
+*.pth
+
+# Node.js / React
+rag-react-app/node_modules/
+rag-react-app/.env
+rag-react-app/build/
+rag-react-app/dist/
+rag-react-app/.next/
+rag-react-app/coverage/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

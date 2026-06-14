@@ -12,6 +12,7 @@ RUN pip install -vvv langchain-huggingface==1.2.2 --index-url ${PIP_INDEX_URL}
 RUN pip install -vvv einops==0.8.2 --index-url ${PIP_INDEX_URL}
 RUN pip install -vvv faiss-cpu==1.14.2 --index-url ${PIP_INDEX_URL}
 RUN pip install huggingface-hub --index-url ${PIP_INDEX_URL}
+RUN pip install "git+https://github.com/therealmichaelberna/FlagEmbedding.git@transformers-v5-compat"
 
 ENV HF_HUB_OFFLINE=0
 ENV TRANSFORMERS_OFFLINE=0
@@ -25,4 +26,4 @@ COPY services/jina-service/ ./
 
 ENV PYTHONPATH=/app
 
-CMD ["python", "src/jina-demo.py"]
+CMD ["python", "src/BGE-local.py"]

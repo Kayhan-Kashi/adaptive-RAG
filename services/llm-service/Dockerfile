@@ -18,6 +18,8 @@ RUN pip install huggingface-hub --index-url ${PIP_INDEX_URL}
 RUN pip install langchain --index-url ${PIP_INDEX_URL}
 RUN pip install  langchain-core --index-url ${PIP_INDEX_URL}
 RUN pip install langchain-community --index-url ${PIP_INDEX_URL}
+RUN pip install rank_bm25 langchain-community scipy --index-url ${PIP_INDEX_URL}
+RUN pip install FlagEmbedding --index-url ${PIP_INDEX_URL}
 
 # ENV HF_HUB_OFFLINE=1
 # ENV TRANSFORMERS_OFFLINE=1

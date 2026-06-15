@@ -1,6 +1,7 @@
 # elearning-service/src/api/routes/websocket_routes.py
 import logging
 from datetime import datetime
+from typing import List, Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
 from fastapi_injector import Injected
 from sqlmodel import Session
@@ -57,22 +58,26 @@ async def websocket_endpoint(
                 elif msg_type == "chat":
                     conversation_id = data.get("conversation_id")
                     prompt = data.get("prompt")
+                    file_ids: Optional[List[str]] = data.get("file_ids", [])  # ← Extract file_ids
                     
                     logger.info(f"💬 Chat message from user {user_id} in conversation {conversation_id}")
                     logger.info(f"   Prompt: {prompt[:100]}...")
+                    logger.info(f"   File IDs: {file_ids}")
                     
                     # Register conversation for WebSocket routing
                     connection_manager.register_conversation(conversation_id, user_id)
                     
-                    # Create dialogue - this will automatically publish Kafka event
+                    # Create dialogue with file_ids - THIS IS THE KEY CHANGE
                     dialogue_id = await service.create_dialogue(
                         session=db,
                         conversation_id=conversation_id,
                         prompt=prompt,
-                        answer=None
+                        answer=None,
+                        file_ids=file_ids  # ← Pass file_ids to service
                     )
                     
                     logger.info(f"📝 Dialogue created: {dialogue_id}")
+                    logger.info(f"   Associated file IDs: {file_ids}")
                     logger.info(f"📤 Kafka event published by ConversationService")
                     
                     # Send acknowledgment
@@ -80,6 +85,7 @@ async def websocket_endpoint(
                         "type": "ack",
                         "conversation_id": conversation_id,
                         "dialogue_id": str(dialogue_id),
+                        "file_ids": file_ids,  # ← Include file_ids in acknowledgment
                         "timestamp": datetime.utcnow().isoformat()
                     })
                     logger.debug(f"✅ Sent acknowledgment to user {user_id}")

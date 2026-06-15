@@ -128,8 +128,11 @@ function App() {
   const loadUploadedFiles = useCallback(async () => {
     if (!user) return;
     try {
-      const response = await axios.get(`${API_BASE_URL}/documents/user/${user.id}`);
-      setUploadedFiles(response.data);
+      const response = await axios.get(`${API_BASE_URL}/documents/`, {
+        params: { skip: 0, limit: 100 }
+      });
+      const files = response.data.documents || response.data;
+      setUploadedFiles(Array.isArray(files) ? files : []);
     } catch (error) {
       console.error('Error loading files:', error);
     }
@@ -171,7 +174,7 @@ function App() {
       setCurrentConversation({ id: newConversation.conversation_id });
       setMessages([]);
       setSelectedFiles([]);
-      setShowFileSelector(true);
+      // No automatic file selector popup - user must click "Docs" button
       setCurrentView('chat');
       await loadConversations();
     } catch (error) {
@@ -255,7 +258,7 @@ function App() {
   const deleteFile = async (fileId, fileName) => {
     if (window.confirm(`Are you sure you want to delete "${fileName}"?`)) {
       try {
-        await axios.delete(`${API_BASE_URL}/documents/${fileId}?user_id=${user.id}`);
+        await axios.delete(`${API_BASE_URL}/documents/${fileId}`);
         alert(`File "${fileName}" deleted successfully!`);
         await loadUploadedFiles();
         setSelectedFiles(prev => prev.filter(f => f.id !== fileId));
@@ -416,36 +419,64 @@ function App() {
             <div className="chat-header">
               <div className="chat-title">
                 <span>💬</span> Chat
+                {selectedFiles.length > 0 && (
+                  <span className="doc-count-badge" title={`${selectedFiles.length} document(s) selected`}>
+                    📄 {selectedFiles.length}
+                  </span>
+                )}
               </div>
-              <button onClick={() => setCurrentView('dashboard')} className="back-btn">
-                ← Dashboard
-              </button>
+              <div className="chat-header-buttons">
+                <button 
+                  onClick={() => setShowFileSelector(true)} 
+                  className="docs-btn"
+                  title="View uploaded documents"
+                >
+                  📄 Docs
+                </button>
+                <button onClick={() => setCurrentView('dashboard')} className="back-btn">
+                  ← Dashboard
+                </button>
+              </div>
             </div>
 
-            {showFileSelector && uploadedFiles.length > 0 && (
+            {showFileSelector && (
               <div className="file-modal">
                 <div className="file-modal-content">
                   <div className="file-modal-header">
-                    <h3>Select documents for this conversation</h3>
+                    <h3>Your Documents</h3>
                     <button onClick={() => setShowFileSelector(false)}>✕</button>
                   </div>
-                  <div className="file-list-select">
-                    {uploadedFiles.map(file => (
-                      <label key={file.id} className="file-option">
-                        <input
-                          type="checkbox"
-                          checked={selectedFiles.some(f => f.id === file.id)}
-                          onChange={() => toggleFileSelection(file)}
-                        />
-                        <span className="file-option-icon">{getFileIcon(file.name)}</span>
-                        <span className="file-option-name">{file.name}</span>
-                      </label>
-                    ))}
-                  </div>
-                  <div className="file-modal-footer">
-                    <button onClick={() => setShowFileSelector(false)} className="confirm">
-                      Continue with {selectedFiles.length} document{selectedFiles.length !== 1 ? 's' : ''}
-                    </button>
+                  <div className="file-modal-body">
+                    {uploadedFiles.length === 0 ? (
+                      <div className="no-docs-message">
+                        <p>No documents uploaded yet.</p>
+                        <p>Upload documents from the dashboard.</p>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="file-list">
+                          {uploadedFiles.map(file => (
+                            <label key={file.id} className="file-item">
+                              <input
+                                type="checkbox"
+                                checked={selectedFiles.some(f => f.id === file.id)}
+                                onChange={() => toggleFileSelection(file)}
+                              />
+                              <span className="file-icon">{getFileIcon(file.name)}</span>
+                              <span className="file-name">{file.name}</span>
+                            </label>
+                          ))}
+                        </div>
+                        <div className="file-modal-footer">
+                          <span className="selected-info">
+                            {selectedFiles.length} document{selectedFiles.length !== 1 ? 's' : ''} selected
+                          </span>
+                          <button onClick={() => setShowFileSelector(false)} className="confirm-btn">
+                            Done
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -493,7 +524,7 @@ function App() {
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
-                placeholder="Ask a question..."
+                placeholder={selectedFiles.length > 0 ? `Ask about ${selectedFiles.length} document(s)...` : "Ask a question..."}
                 disabled={loading}
               />
               <button onClick={sendMessage} disabled={loading || !inputMessage.trim()}>Send</button>

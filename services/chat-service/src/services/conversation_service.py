@@ -60,9 +60,18 @@ class ConversationService:
         session: Session,
         conversation_id: str,
         prompt: str,
-        answer: Optional[str] = None
+        answer: Optional[str] = None,
+        file_ids: Optional[List[str]] = None  # ← ADDED: file_ids parameter
     ):
-        """Create a new dialogue in a conversation and publish event to Kafka"""
+        """Create a new dialogue in a conversation and publish event to Kafka
+        
+        Args:
+            session: Database session
+            conversation_id: ID of the conversation
+            prompt: User's prompt/question
+            answer: Optional answer (for existing dialogues)
+            file_ids: Optional list of document IDs to restrict search context
+        """
         if not conversation_id:
             raise HTTPException(status_code=400, detail="Conversation ID is required")
         
@@ -86,10 +95,18 @@ class ConversationService:
             session.refresh(dialogue)
             
             logger.info(f"📝 Dialogue created: {dialogue.id} for conversation: {conversation_id}")
+            if file_ids:
+                logger.info(f"   Associated file_ids: {file_ids}")
             
             # Publish event to Kafka if producer is available
             if self.kafka_producer:
-                await self._publish_prompt_request(conversation_id, conversation, dialogue, prompt)
+                await self._publish_prompt_request(
+                    conversation_id=conversation_id,
+                    conversation=conversation,
+                    dialogue=dialogue,
+                    prompt=prompt,
+                    file_ids=file_ids  # ← Pass file_ids to Kafka event
+                )
             else:
                 logger.warning(f"⚠️ Kafka producer not available, event not published for dialogue: {dialogue.id}")
             
@@ -106,19 +123,37 @@ class ConversationService:
             logger.exception("Dialogue creation error details:")
             raise HTTPException(status_code=500, detail=f"Error creating dialogue: {str(e)}")
     
-    async def _publish_prompt_request(self, conversation_id: str, conversation: Conversation, dialogue: Dialogue, prompt: str):
-        """Publish prompt request event to Kafka"""
+    async def _publish_prompt_request(
+        self, 
+        conversation_id: str, 
+        conversation: Conversation, 
+        dialogue: Dialogue, 
+        prompt: str,
+        file_ids: Optional[List[str]] = None  # ← ADDED: file_ids parameter
+    ):
+        """Publish prompt request event to Kafka
+        
+        Args:
+            conversation_id: ID of the conversation
+            conversation: Conversation object
+            dialogue: Dialogue object
+            prompt: User's prompt
+            file_ids: Optional list of document IDs to restrict search context
+        """
         try:
             prompt_event = PromptAnswerRequestedEvent(
                 conversation_id=conversation_id,
                 dialogue_id=str(dialogue.id),
                 prompt=prompt,
-                user_id=str(conversation.user_id)
+                user_id=str(conversation.user_id),
+                file_ids=file_ids  # ← ADDED: Include file_ids in the event
             )
             
             logger.info(f"📤 Publishing Kafka event for dialogue: {dialogue.id}")
             logger.debug(f"   Event ID: {prompt_event.event_id}")
             logger.debug(f"   Topic: {prompt_event.topic}")
+            if file_ids:
+                logger.info(f"   File IDs: {file_ids}")
             
             # Produce the event
             result = self.kafka_producer.produce(event=prompt_event, key=conversation_id)

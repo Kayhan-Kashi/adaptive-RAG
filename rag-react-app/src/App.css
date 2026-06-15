@@ -705,3 +705,124 @@ body {
 .docs-badge.inline {
   margin-bottom: 1rem;
 }
+
+/* Add these CSS rules to the end of your existing App.css */
+
+/* Chat header buttons container */
+.chat-header-buttons {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+/* Docs button in chat header */
+.docs-btn {
+  background: #f0f0f0;
+  border: none;
+  padding: 0.4rem 0.8rem;
+  border-radius: 0.5rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background 0.2s;
+  color: #333;
+}
+
+.docs-btn:hover {
+  background: #e0e0e0;
+}
+
+/* Document count badge in header */
+.doc-count-badge {
+  background: #48bb78;
+  color: white;
+  font-size: 0.7rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 1rem;
+  margin-left: 0.5rem;
+}
+
+/* File modal body */
+.file-modal-body {
+  max-height: 400px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* No documents message */
+.no-docs-message {
+  padding: 2rem;
+  text-align: center;
+  color: #666;
+}
+
+.no-docs-message p {
+  margin: 0.5rem 0;
+}
+
+/* File list container */
+.file-list {
+  padding: 1rem;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+/* File item row */
+.file-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem;
+  cursor: pointer;
+  border-radius: 0.5rem;
+  transition: background 0.2s;
+}
+
+.file-item:hover {
+  background: #f0f0f0;
+}
+
+.file-item input {
+  cursor: pointer;
+}
+
+.file-item .file-icon {
+  font-size: 1.2rem;
+}
+
+.file-item .file-name {
+  font-size: 0.85rem;
+  color: #333;
+  flex: 1;
+}
+
+/* Selected info text */
+.selected-info {
+  font-size: 0.85rem;
+  color: #667eea;
+  font-weight: 500;
+}
+
+/* Confirm button in modal */
+.confirm-btn {
+  background: #667eea;
+  color: white;
+  border: none;
+  padding: 0.6rem 1.2rem;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: background 0.2s;
+}
+
+.confirm-btn:hover {
+  background: #5a67d8;
+}
+
+/* File modal footer */
+.file-modal-footer {
+  padding: 1rem;
+  border-top: 1px solid #e0e0e0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}

@@ -59,7 +59,8 @@ services:
       - ENVIRONMENT=production
     volumes:
       - rag-chat-data:/app/data
-      - uploads-data:/app/uploads
+      # - uploads-data:/app/uploads
+      - ./uploaded_files:/app/uploads 
     depends_on:
       - kafka
     networks:
@@ -87,7 +88,8 @@ services:
         - HF_HUB_DISABLE_SYMLINKS_WARNING=1
         - HF_HOME=/app/models/hf_cache
       volumes:
-        - uploads-data:/app/uploads 
+        # - uploads-data:/app/uploads 
+        - ./uploaded_files:/app/uploads 
         - ./models/snapshot/jina-embeddings-v3:/app/models/snapshot/jina-embeddings-v3
         - ./models/hf_cache:/app/models/hf_cache
         - ./models/faiss_index:/app/faiss_index

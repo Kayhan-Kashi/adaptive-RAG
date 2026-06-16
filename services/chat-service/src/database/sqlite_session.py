@@ -1,11 +1,13 @@
+import os
+
 from sqlmodel import SQLModel, create_engine, Session
 from sqlalchemy import event, select
 from contextlib import contextmanager
 from typing import Generator
 import uuid
 
-DATABASE_URL = "sqlite:///./database.db"
-
+# DATABASE_URL = "sqlite:///./database.db"
+DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///./database.db')
 # Fixed UUIDs for User1 and User2
 USER1_ID = uuid.UUID('12345678-1234-5678-1234-567812345678')
 USER2_ID = uuid.UUID('87654321-4321-8765-4321-876543210987')

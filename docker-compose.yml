@@ -55,10 +55,11 @@ services:
       - "8000:8000"
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
-      - DATABASE_URL=sqlite:///./data/database.db
+      - DATABASE_URL=sqlite://///app/data/database.db
       - ENVIRONMENT=production
     volumes:
-      - rag-chat-data:/app/data
+      - ./data:/app/data
+      # - rag-chat-data:/app/data
       # - uploads-data:/app/uploads
       - ./uploaded_files:/app/uploads 
     depends_on:

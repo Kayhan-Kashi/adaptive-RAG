@@ -25,9 +25,9 @@ class PromptAnswerRequestedHandler:
             logger.info(f"   Event ID: {event.event_id[:8]}...")
             logger.info(f"   Prompt: {event.prompt[:150]}...")
             
-            # Generate answer using LLM service
+            # Generate answer using LLM service with file_ids
             start_time = time.time()
-            answer = await self.llm_service.generate(event.prompt)
+            answer = await self.llm_service.generate(event.prompt, file_ids=getattr(event, 'file_ids', None))
             elapsed = time.time() - start_time
             
             logger.info(f"✅ [LLM] Answer generated in {elapsed:.2f}s")

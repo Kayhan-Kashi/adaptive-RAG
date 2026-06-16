@@ -615,6 +615,86 @@ class RagService:
             use_reranker=True
         )
     
+    # ============ FILE FILTERING METHODS ============
+    
+    def get_chunks_by_file_ids(self, file_ids: List[str]) -> List[Document]:
+        """
+        Retrieve chunks that belong to specific file IDs
+        
+        Args:
+            file_ids: List of document/file IDs to filter by
+        
+        Returns:
+            List of Document chunks from the specified files
+        """
+        if not self.all_chunks:
+            logger.warning("No chunks available in storage")
+            return []
+        
+        file_id_set = set(str(fid) for fid in file_ids)
+        filtered_chunks = [
+            chunk for chunk in self.all_chunks 
+            if str(chunk.metadata.get('document_id')) in file_id_set
+        ]
+        
+        logger.info(f"📁 Filtered {len(filtered_chunks)} chunks from {len(file_ids)} files")
+        return filtered_chunks
+    
+    def search_with_file_filtering(self, query: str, file_ids: List[str], k: int = 5, use_reranker: bool = True) -> List[Document]:
+        """
+        Search only within specified files, optionally with reranking
+        
+        Args:
+            query: Search query
+            file_ids: List of file IDs to restrict search to
+            k: Number of results to return
+            use_reranker: Whether to apply reranker after retrieval (default: True)
+        
+        Returns:
+            List of relevant documents from the specified files
+        """
+        filtered_chunks = self.get_chunks_by_file_ids(file_ids)
+        
+        if not filtered_chunks:
+            logger.warning(f"No chunks found for file_ids: {file_ids}")
+            return []
+        
+        try:
+            # Create temporary FAISS index with filtered chunks
+            langchain_compatible_model = JinaLangChainWrapper(self.embedding_service.model)
+            temp_vector_store = FAISS.from_documents(filtered_chunks, langchain_compatible_model)
+            
+            # Retrieve more if reranking is enabled
+            retrieve_k = k * 3 if use_reranker else k
+            retriever = temp_vector_store.as_retriever(
+                search_type="mmr",
+                search_kwargs={"k": retrieve_k, "fetch_k": min(100, len(filtered_chunks)), "lambda_mult": 0.7}
+            )
+            
+            results = retriever.invoke(query)
+            logger.info(f"🔍 File-filtered search retrieved {len(results)} results from {len(filtered_chunks)} chunks")
+            
+            # Apply reranking if enabled and available
+            if use_reranker and self.reranker is not None:
+                logger.info("🎯 Applying reranker to file-filtered results")
+                results = self._rerank_chunks(query, results, top_k=k)
+            else:
+                # Just limit to k
+                results = results[:k]
+            
+            logger.info(f"✅ File-filtered search returned {len(results)} final results")
+            return results
+            
+        except Exception as e:
+            logger.error(f"❌ File-filtered search failed: {e}")
+            # Fallback: if reranker is available, just rerank the filtered chunks directly
+            if use_reranker and self.reranker:
+                logger.info("🔄 Fallback: Reranking filtered chunks directly")
+                return self._rerank_chunks(query, filtered_chunks, top_k=k)
+            return filtered_chunks[:k]
+    
+    # ============ END FILE FILTERING METHODS ============
+    
     def compare_retrieval_methods(self, query: str, k: int = 5) -> Dict[str, Any]:
         """
         Compare retrieval results with and without reranker

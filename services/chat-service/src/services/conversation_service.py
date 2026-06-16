@@ -5,7 +5,7 @@ from fastapi import HTTPException
 from injector import inject
 from sqlmodel import Session, select
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import logging
 
 from common.events import PromptAnswerRequestedEvent #type: ignore
@@ -55,13 +55,61 @@ class ConversationService:
             logger.error(f"❌ Error creating conversation: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Error creating conversation: {str(e)}")
     
+    def _get_conversation_history(self, session: Session, conversation_id: str, max_messages: int = 50) -> List[Dict[str, str]]:
+        """
+        Get conversation history as a list of messages.
+        
+        Args:
+            session: Database session
+            conversation_id: ID of the conversation
+            max_messages: Maximum number of messages to include
+        
+        Returns:
+            List of message dicts with 'role' and 'content'
+        """
+        try:
+            # Get dialogues for this conversation
+            dialogues = session.exec(
+                select(Dialogue)
+                .where(Dialogue.conversation_id == uuid.UUID(conversation_id))
+                .order_by(Dialogue.created_at.desc())
+                .limit(max_messages // 2 + 1)  # Get enough for both user and assistant messages
+            ).all()
+            
+            # Build history in chronological order (oldest first)
+            history = []
+            for dialogue in reversed(dialogues):  # Reverse to get oldest first
+                # User message
+                history.append({
+                    "role": "user",
+                    "content": dialogue.prompt
+                })
+                # Assistant message if exists
+                if dialogue.answer:
+                    history.append({
+                        "role": "assistant",
+                        "content": dialogue.answer
+                    })
+            
+            # Limit to max_messages
+            if len(history) > max_messages:
+                history = history[-max_messages:]
+            
+            logger.debug(f"📜 Retrieved {len(history)} messages from conversation history")
+            return history
+            
+        except Exception as e:
+            logger.warning(f"Failed to get conversation history: {e}")
+            return []
+    
     async def create_dialogue(
         self,
         session: Session,
         conversation_id: str,
         prompt: str,
         answer: Optional[str] = None,
-        file_ids: Optional[List[str]] = None  # ← ADDED: file_ids parameter
+        file_ids: Optional[List[str]] = None,
+        include_history: bool = True
     ):
         """Create a new dialogue in a conversation and publish event to Kafka
         
@@ -71,6 +119,7 @@ class ConversationService:
             prompt: User's prompt/question
             answer: Optional answer (for existing dialogues)
             file_ids: Optional list of document IDs to restrict search context
+            include_history: Whether to include conversation history in the event
         """
         if not conversation_id:
             raise HTTPException(status_code=400, detail="Conversation ID is required")
@@ -98,6 +147,13 @@ class ConversationService:
             if file_ids:
                 logger.info(f"   Associated file_ids: {file_ids}")
             
+            # Get conversation history if requested
+            history = None
+            if include_history:
+                history = self._get_conversation_history(session, conversation_id)
+                if history:
+                    logger.info(f"   Including {len(history)} messages from history")
+            
             # Publish event to Kafka if producer is available
             if self.kafka_producer:
                 await self._publish_prompt_request(
@@ -105,7 +161,8 @@ class ConversationService:
                     conversation=conversation,
                     dialogue=dialogue,
                     prompt=prompt,
-                    file_ids=file_ids  # ← Pass file_ids to Kafka event
+                    file_ids=file_ids,
+                    history=history
                 )
             else:
                 logger.warning(f"⚠️ Kafka producer not available, event not published for dialogue: {dialogue.id}")
@@ -129,7 +186,8 @@ class ConversationService:
         conversation: Conversation, 
         dialogue: Dialogue, 
         prompt: str,
-        file_ids: Optional[List[str]] = None  # ← ADDED: file_ids parameter
+        file_ids: Optional[List[str]] = None,
+        history: Optional[List[Dict[str, str]]] = None
     ):
         """Publish prompt request event to Kafka
         
@@ -139,6 +197,7 @@ class ConversationService:
             dialogue: Dialogue object
             prompt: User's prompt
             file_ids: Optional list of document IDs to restrict search context
+            history: Optional conversation history
         """
         try:
             prompt_event = PromptAnswerRequestedEvent(
@@ -146,7 +205,8 @@ class ConversationService:
                 dialogue_id=str(dialogue.id),
                 prompt=prompt,
                 user_id=str(conversation.user_id),
-                file_ids=file_ids  # ← ADDED: Include file_ids in the event
+                file_ids=file_ids,
+                history=history  # Include history in the event
             )
             
             logger.info(f"📤 Publishing Kafka event for dialogue: {dialogue.id}")
@@ -154,6 +214,8 @@ class ConversationService:
             logger.debug(f"   Topic: {prompt_event.topic}")
             if file_ids:
                 logger.info(f"   File IDs: {file_ids}")
+            if history:
+                logger.info(f"   History messages: {len(history)}")
             
             # Produce the event
             result = self.kafka_producer.produce(event=prompt_event, key=conversation_id)

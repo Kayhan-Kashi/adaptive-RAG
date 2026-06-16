@@ -61,9 +61,20 @@ class IngestionService:
         self.bm25_retriever = None
         self.all_chunks = []
         
-        # MMR configuration
-        self.mmr_fetch_k = int(os.getenv("MMR_FETCH_K", "100"))
-        self.mmr_lambda_mult = float(os.getenv("MMR_LAMBDA_MULT", "0.7"))
+        # ============ OPTIMIZED PARAMETERS ============
+        
+        # MMR configuration (for diversity in FAISS retrieval)
+        self.mmr_fetch_k = int(os.getenv("MMR_FETCH_K", "200"))  # Increased from 100
+        self.mmr_lambda_mult = float(os.getenv("MMR_LAMBDA_MULT", "0.5"))  # Balanced diversity
+        
+        # Chunking parameters (optimized for better retrieval)
+        self.default_chunk_size = int(os.getenv("DEFAULT_CHUNK_SIZE", "500"))  # Increased from 200
+        self.default_chunk_overlap = int(os.getenv("DEFAULT_CHUNK_OVERLAP", "50"))  # 10% overlap
+        
+        # FAISS index parameters
+        self.faiss_index_type = os.getenv("FAISS_INDEX_TYPE", "flat")  # flat, ivf, or hnsw
+        
+        # ============ END OPTIMIZED PARAMETERS ============
         
         # Initialize
         self._ensure_directories()
@@ -75,6 +86,8 @@ class IngestionService:
         logger.info(f"   BM25 index: {self.bm25_index_path}")
         logger.info(f"   FAISS vectors: {self.vector_store.index.ntotal if self.vector_store else 0}")
         logger.info(f"   BM25 chunks: {len(self.all_chunks)}")
+        logger.info(f"   MMR: fetch_k={self.mmr_fetch_k}, lambda={self.mmr_lambda_mult}")
+        logger.info(f"   Chunking: size={self.default_chunk_size}, overlap={self.default_chunk_overlap}")
     
     def _ensure_directories(self):
         """Create necessary directories for indexes"""
@@ -135,7 +148,9 @@ class IngestionService:
                 "total_chunks": len(self.all_chunks),
                 "last_updated": str(__import__('datetime').datetime.now()),
                 "index_path": self.bm25_index_path,
-                "type": "BM25"
+                "type": "BM25",
+                "chunk_size": self.default_chunk_size,
+                "chunk_overlap": self.default_chunk_overlap
             }
             with open(self.bm25_metadata_file, 'w') as f:
                 json.dump(metadata, f, indent=2)
@@ -181,24 +196,31 @@ class IngestionService:
         document_id: str,
         filename: str,
         filetype: str,
-        chunk_size: int = 200,
-        chunk_overlap: int = 20
+        chunk_size: Optional[int] = None,
+        chunk_overlap: Optional[int] = None
     ) -> List[Document]:
         """
-        Load, preprocess, chunk, and index a document.
+        Load, preprocess, chunk, and index a document with optimized parameters.
         
         Args:
             file_path: Path to the document file
             document_id: Unique identifier for the document
             filename: Display name of the document
             filetype: Type of document (pdf, docx, etc.)
-            chunk_size: Size of each chunk in characters
-            chunk_overlap: Overlap between chunks
+            chunk_size: Size of each chunk in characters (defaults to 500)
+            chunk_overlap: Overlap between chunks (defaults to 50)
         
         Returns:
             List of created chunks
         """
+        # Use optimized defaults if not provided
+        if chunk_size is None:
+            chunk_size = self.default_chunk_size
+        if chunk_overlap is None:
+            chunk_overlap = self.default_chunk_overlap
+        
         logger.info(f"📄 Processing document: {filename}")
+        logger.info(f"   Chunk size: {chunk_size}, overlap: {chunk_overlap}")
         
         # Validate file exists
         if not os.path.exists(file_path):
@@ -217,23 +239,36 @@ class IngestionService:
             raise ValueError("Preprocessing removed all text")
         logger.info(f"   Preprocessed: {len(preprocessed_text)} characters")
         
-        # Create document
+        # Create document with enhanced metadata
         doc = Document(
             page_content=preprocessed_text,
             metadata={
                 "source": file_path,
                 "document_id": document_id,
                 "filename": filename,
-                "filetype": filetype
+                "filetype": filetype,
+                "chunk_size": chunk_size,
+                "chunk_overlap": chunk_overlap,
+                "total_chars": len(preprocessed_text)
             }
         )
         
-        # Chunk
-        chunks = self.text_chunker.chunk(doc, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-        for chunk in chunks:
+        # Chunk with optimized parameters
+        chunks = self.text_chunker.chunk(
+            doc, 
+            chunk_size=chunk_size, 
+            chunk_overlap=chunk_overlap
+        )
+        
+        # Add rich metadata to each chunk
+        for i, chunk in enumerate(chunks):
             chunk.metadata['document_id'] = document_id
             chunk.metadata['filename'] = filename
             chunk.metadata['filetype'] = filetype
+            chunk.metadata['chunk_index'] = i
+            chunk.metadata['total_chunks'] = len(chunks)
+            chunk.metadata['chunk_size'] = chunk_size
+            chunk.metadata['chunk_overlap'] = chunk_overlap
         
         logger.info(f"   Chunked: {len(chunks)} chunks")
         
@@ -274,11 +309,20 @@ class IngestionService:
             "faiss": {
                 "total_vectors": self.vector_store.index.ntotal if self.vector_store else 0,
                 "dimension": self.vector_store.index.d if self.vector_store else 0,
-                "index_path": self.faiss_index_path
+                "index_path": self.faiss_index_path,
+                "index_type": self.faiss_index_type
             },
             "bm25": {
                 "total_chunks": len(self.all_chunks),
                 "index_path": self.bm25_index_path
+            },
+            "chunking": {
+                "default_size": self.default_chunk_size,
+                "default_overlap": self.default_chunk_overlap
+            },
+            "mmr": {
+                "fetch_k": self.mmr_fetch_k,
+                "lambda_mult": self.mmr_lambda_mult
             }
         }
     

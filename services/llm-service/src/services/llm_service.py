@@ -1,3 +1,4 @@
+# llm-service/src/services/llm_service.py
 import os
 import logging
 from injector import inject
@@ -24,10 +25,15 @@ class LLMService:
             temperature=float(os.getenv("OLLAMA_TEMPERATURE", "0.3")),
         )
         
-        # RAG Prompt
+        # RAG Prompt with history support
         self.prompt = ChatPromptTemplate.from_template("""
-        You are a helpful assistant. Answer the user's question based ONLY on the provided context.
-        If the answer is not in the context, say that you don't know.
+        You are a helpful assistant. Answer the user's question based ONLY on the provided context and previous conversation_history.
+        If the answer is not in the context or in the conversation history, say that you don't know.
+        
+        <conversation_history>
+        {history}
+        </conversation_history>
+        
         
         <context>
         {context}
@@ -40,13 +46,19 @@ class LLMService:
         
         logger.info("✅ LLMService initialized")
 
-    async def generate(self, prompt: str, file_ids: Optional[List[str]] = None) -> str:
+    async def generate(
+        self, 
+        prompt: str, 
+        file_ids: Optional[List[str]] = None,
+        history: Optional[List[Dict[str, str]]] = None
+    ) -> str:
         """
-        Generate answer using RAG.
+        Generate answer using RAG with optional conversation history.
         
         Args:
             prompt: User question
             file_ids: Optional list of file IDs to filter by
+            history: Optional conversation history as list of {role, content} dicts
         
         Returns:
             Generated answer
@@ -55,6 +67,8 @@ class LLMService:
             logger.info(f"📝 User Question: {prompt}")
             if file_ids:
                 logger.info(f"   📁 Filtering to file_ids: {file_ids}")
+            if history:
+                logger.info(f"   📜 History: {len(history)} messages")
             
             # 1. RETRIEVE: Get relevant chunks using RagService
             retrieved_chunks = self.rag_service.retrieve(
@@ -82,31 +96,47 @@ class LLMService:
                 for chunk in retrieved_chunks
             ])
             
-            # 3. FORMAT PROMPT
+            # 3. BUILD HISTORY STRING
+            history_text = ""
+            if history:
+                history_lines = []
+                for msg in history:
+                    role = msg.get('role', 'user')
+                    content = msg.get('content', '')
+                    if role == 'user':
+                        history_lines.append(f"User: {content}")
+                    else:
+                        history_lines.append(f"Assistant: {content}")
+                history_text = "Previous conversation:\n" + "\n".join(history_lines) + "\n"
+                logger.info(f"📜 Added {len(history)} history messages to prompt")
+            
+            # 4. FORMAT PROMPT with history
             formatted_messages = self.prompt.format_messages(
                 context=context_text,
-                input=prompt
+                input=prompt,
+                history=history_text
             )
             
-            # 4. LOG PROMPT (for debugging)
+            # 5. LOG PROMPT (for debugging)
             logger.info("=" * 100)
             logger.info("🤖🤖🤖 FINAL PROMPT SENT TO OLLAMA 🤖🤖🤖")
             logger.info("=" * 100)
             logger.info(f"📊 STATISTICS:")
             logger.info(f"   - Chunks in context: {len(retrieved_chunks)}")
             logger.info(f"   - Context length: {len(context_text)} characters")
+            logger.info(f"   - History messages: {len(history) if history else 0}")
             logger.info(f"   - Query length: {len(prompt)} characters")
             if file_ids:
                 logger.info(f"   - Filtering to: {file_ids}")
             logger.info("-" * 100)
             logger.info("📝 FULL PROMPT CONTENT:")
             logger.info("-" * 100)
-            logger.info(formatted_messages[0].content[:2000])  # Limit to avoid log spam
+            logger.info(formatted_messages[0].content[:2000])
             if len(formatted_messages[0].content) > 2000:
                 logger.info(f"... (truncated, total {len(formatted_messages[0].content)} characters)")
             logger.info("=" * 100)
             
-            # 5. GENERATE
+            # 6. GENERATE
             response = await self.llm.ainvoke(formatted_messages)
             answer = response.content.strip()
             
@@ -119,13 +149,19 @@ class LLMService:
             logger.error(traceback.format_exc())
             return f"Error generating response: {str(e)}"
     
-    async def generate_with_sources(self, prompt: str, file_ids: Optional[List[str]] = None) -> Dict[str, Any]:
+    async def generate_with_sources(
+        self, 
+        prompt: str, 
+        file_ids: Optional[List[str]] = None,
+        history: Optional[List[Dict[str, str]]] = None
+    ) -> Dict[str, Any]:
         """
         Generate answer and return with source documents.
         
         Args:
             prompt: User question
             file_ids: Optional list of file IDs to filter by
+            history: Optional conversation history
         
         Returns:
             Dictionary with answer and sources
@@ -134,6 +170,8 @@ class LLMService:
             logger.info(f"📝 User Question: {prompt}")
             if file_ids:
                 logger.info(f"   📁 Filtering to file_ids: {file_ids}")
+            if history:
+                logger.info(f"   📜 History: {len(history)} messages")
             
             retrieved_chunks = self.rag_service.retrieve(
                 query=prompt,
@@ -153,6 +191,19 @@ class LLMService:
                 for chunk in retrieved_chunks
             ])
             
+            # Build history string
+            history_text = ""
+            if history:
+                history_lines = []
+                for msg in history:
+                    role = msg.get('role', 'user')
+                    content = msg.get('content', '')
+                    if role == 'user':
+                        history_lines.append(f"User: {content}")
+                    else:
+                        history_lines.append(f"Assistant: {content}")
+                history_text = "Previous conversation:\n" + "\n".join(history_lines) + "\n"
+            
             # HIGHLY VISIBLE PROMPT LOGGING WITH SOURCES
             logger.info("=" * 100)
             logger.info("🤖🤖🤖 FINAL PROMPT SENT TO OLLAMA (WITH SOURCES) 🤖🤖🤖")
@@ -160,6 +211,7 @@ class LLMService:
             logger.info(f"📊 STATISTICS:")
             logger.info(f"   - Total chunks: {len(retrieved_chunks)}")
             logger.info(f"   - Context length: {len(context_text)} chars")
+            logger.info(f"   - History messages: {len(history) if history else 0}")
             if file_ids:
                 logger.info(f"   - Filtering to: {file_ids}")
             logger.info("-" * 100)
@@ -172,7 +224,8 @@ class LLMService:
             
             formatted_messages = self.prompt.format_messages(
                 context=context_text,
-                input=prompt
+                input=prompt,
+                history=history_text
             )
             
             response = await self.llm.ainvoke(formatted_messages)

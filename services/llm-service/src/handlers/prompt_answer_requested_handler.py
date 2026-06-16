@@ -19,15 +19,28 @@ class PromptAnswerRequestedHandler:
         logger.info("✅ PromptAnswerRequestedHandler initialized")
     
     async def handle(self, event: PromptAnswerRequestedEvent, db: Optional[Any] = None):
-        """Handle consumed prompt request"""
+        """Handle consumed prompt request with file_ids and history"""
         try:
             logger.info(f"📥 [LLM] Processing prompt request")
             logger.info(f"   Event ID: {event.event_id[:8]}...")
             logger.info(f"   Prompt: {event.prompt[:150]}...")
             
-            # Generate answer using LLM service with file_ids
+            # Get file_ids and history from event
+            file_ids = getattr(event, 'file_ids', None)
+            history = getattr(event, 'history', None)
+            
+            if file_ids:
+                logger.info(f"   📁 File IDs: {file_ids}")
+            if history:
+                logger.info(f"   📜 History: {len(history)} messages")
+            
+            # Generate answer using LLM service with file_ids and history
             start_time = time.time()
-            answer = await self.llm_service.generate(event.prompt, file_ids=getattr(event, 'file_ids', None))
+            answer = await self.llm_service.generate(
+                prompt=event.prompt,
+                file_ids=file_ids,
+                history=history
+            )
             elapsed = time.time() - start_time
             
             logger.info(f"✅ [LLM] Answer generated in {elapsed:.2f}s")

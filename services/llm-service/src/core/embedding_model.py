@@ -5,7 +5,7 @@ from transformers import AutoModel
 
 logger = logging.getLogger(__name__)
 
-class EmbeddingService:
+class EmbeddingModel:
     @inject
     def __init__(self):
         # 1. Config setup

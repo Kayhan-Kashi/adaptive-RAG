@@ -5,18 +5,18 @@ from typing import Optional, Any
 from injector import inject
 from common.events import DocumentUploadedEvent #type: ignore
 from common.events.document_embedding_done import DocumentEmbeddingDoneEvent #type: ignore
-from src.services.rag_service import RagService
+from src.services.ingestion_service import IngestionService
 
 logger = logging.getLogger(__name__)
 
 
 class DocumentUploadedHandler:
-    """Handler for DocumentUploadedEvent using RagService"""
+    """Handler for DocumentUploadedEvent using IngestionService"""
     
     @inject
-    def __init__(self, rag_service: RagService):
-        """Initialize handler with injected RagService"""
-        self.rag_service = rag_service
+    def __init__(self, ingestion_service: IngestionService):
+        """Initialize handler with injected IngestionService"""
+        self.ingestion_service = ingestion_service
         logger.info("✅ DocumentUploadedHandler initialized")
     
     async def handle(self, event: DocumentUploadedEvent, db: Optional[Any] = None):
@@ -30,9 +30,9 @@ class DocumentUploadedHandler:
             # Get the file path
             file_path = f"/app/uploads/{event.document_id}{event.filetype}"
             
-            # Process document (prepare, chunk, and embed)
+            # Process document (prepare, chunk, and index)
             start_time = time.time()
-            chunks = self.rag_service.prepare_document(
+            chunks = self.ingestion_service.ingest_document(
                 file_path=file_path,
                 document_id=event.document_id,
                 filename=event.filename,
@@ -42,7 +42,7 @@ class DocumentUploadedHandler:
             )
             
             elapsed = time.time() - start_time
-            logger.info(f"✅ [LLM] Document processed in {elapsed:.2f}s")
+            logger.info(f"✅ [LLM] Document ingested in {elapsed:.2f}s")
             logger.info(f"   Created {len(chunks)} chunks")
             
             # Return completion event (worker will publish it)
@@ -56,5 +56,5 @@ class DocumentUploadedHandler:
             logger.error(f"❌ [LLM] File not found: {e}")
             raise
         except Exception as e:
-            logger.error(f"❌ [LLM] Error processing document: {e}")
+            logger.error(f"❌ [LLM] Error ingesting document: {e}")
             raise

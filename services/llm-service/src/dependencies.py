@@ -6,11 +6,13 @@ from injector import Binder, Module, SingletonScope, Injector
 from common.kafka.producer import KafkaProducer, get_producer
 from common.events import PromptAnswerRequestedEvent, DocumentUploadedEvent
 from src.services.llm_service import LLMService
-from src.services.embedding_service import EmbeddingService
+from src.core.embedding_model import EmbeddingModel
 from src.core.document_loader import DocumentLoader
 from src.core.text_chunker import TextChunker
 from src.core.text_preprocessor import TextPreprocessor
 from src.services.rag_service import RagService
+from src.services.ingestion_service import IngestionService
+from src.services.retrieval_service import RetrievalService
 from src.handlers.document_uploaded_handler import DocumentUploadedHandler
 from src.handlers.prompt_answer_requested_handler import PromptAnswerRequestedHandler
 
@@ -38,10 +40,12 @@ class DependencyInjection(Module):
         # Bind services
         binder.bind(KafkaProducer, to=get_kafka_producer, scope=SingletonScope)
         binder.bind(LLMService, scope=SingletonScope)
-        binder.bind(EmbeddingService, scope=SingletonScope)  # Added
+        binder.bind(EmbeddingModel, scope=SingletonScope)
         binder.bind(DocumentLoader, scope=SingletonScope)
         binder.bind(TextPreprocessor, scope=SingletonScope)
         binder.bind(TextChunker, scope=SingletonScope)
+        binder.bind(IngestionService, scope=SingletonScope)
+        binder.bind(RetrievalService, scope=SingletonScope)
         binder.bind(RagService, scope=SingletonScope)
         
         # Bind handlers

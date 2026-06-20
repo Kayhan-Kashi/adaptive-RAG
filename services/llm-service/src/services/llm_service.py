@@ -25,24 +25,27 @@ class LLMService:
             temperature=float(os.getenv("OLLAMA_TEMPERATURE", "0.3")),
         )
         
-        # RAG Prompt with history support
+        # RAG Prompt with history support and source citation
         self.prompt = ChatPromptTemplate.from_template("""
-        You are a helpful assistant. Answer the user's question based ONLY on the provided context and previous conversation_history.
-        If the answer is not in the context or in the conversation history, say that you don't know.
-        
-        <conversation_history>
-        {history}
-        </conversation_history>
-        
-        
-        <context>
-        {context}
-        </context>
+You are a helpful assistant. Answer the user's question based ONLY on the provided context and previous conversation history.
+If the answer is not in the context or in the conversation history, say that you don't know.
 
-        Question: {input}
-        
-        Answer: 
-        """)
+IMPORTANT: When you use information from the context, cite the source using [Filename, Page X] format at the end of each sentence or paragraph that uses that source.
+
+Example: "The company reported revenue of $10M in Q4 2024 [Annual_Report.pdf, Page 5]."
+
+<conversation_history>
+{history}
+</conversation_history>
+
+<context>
+{context}
+</context>
+
+Question: {input}
+
+Answer: 
+""")
         
         logger.info("✅ LLMService initialized")
 
@@ -61,7 +64,7 @@ class LLMService:
             history: Optional conversation history as list of {role, content} dicts
         
         Returns:
-            Generated answer
+            Generated answer with source citations (PDF filename and page number)
         """
         try:
             logger.info(f"📝 User Question: {prompt}")
@@ -82,19 +85,28 @@ class LLMService:
                     return f"I don't have any relevant information in the selected documents to answer: '{prompt}'."
                 return "I don't have any relevant information to answer this question."
             
-            # Log retrieved chunks
+            # 2. BUILD CONTEXT WITH SOURCE INFORMATION (Filename and Page)
+            context_parts = []
+            for chunk in retrieved_chunks:
+                filename = chunk.metadata.get('filename', 'Unknown.pdf')
+                page_num = chunk.metadata.get('page_number', 'Unknown')
+                content = chunk.page_content
+                
+                # Add source metadata to context
+                context_parts.append(
+                    f"[Source: {filename}, Page: {page_num}]\n{content}"
+                )
+            
+            context_text = "\n\n---\n\n".join(context_parts)
+            
+            # Log retrieved chunks with page info
             logger.info(f"📚 Retrieved {len(retrieved_chunks)} chunks:")
             for i, chunk in enumerate(retrieved_chunks[:5], 1):
                 chunk_preview = chunk.page_content[:150].replace('\n', ' ')
-                score = chunk.metadata.get('reranker_score', 'N/A')
                 filename = chunk.metadata.get('filename', 'unknown')
-                logger.info(f"   {i}. Score={score} - {chunk_preview}... (from: {filename})")
-            
-            # 2. BUILD CONTEXT
-            context_text = "\n\n---\n\n".join([
-                f"[Source: {chunk.metadata.get('filename', 'unknown')}]\n{chunk.page_content}"
-                for chunk in retrieved_chunks
-            ])
+                page_num = chunk.metadata.get('page_number', 'N/A')
+                score = chunk.metadata.get('reranker_score', 'N/A')
+                logger.info(f"   {i}. [Page {page_num}] Score={score} - {chunk_preview}... (from: {filename})")
             
             # 3. BUILD HISTORY STRING
             history_text = ""
@@ -110,7 +122,7 @@ class LLMService:
                 history_text = "Previous conversation:\n" + "\n".join(history_lines) + "\n"
                 logger.info(f"📜 Added {len(history)} history messages to prompt")
             
-            # 4. FORMAT PROMPT with history
+            # 4. FORMAT PROMPT
             formatted_messages = self.prompt.format_messages(
                 context=context_text,
                 input=prompt,
@@ -128,6 +140,15 @@ class LLMService:
             logger.info(f"   - Query length: {len(prompt)} characters")
             if file_ids:
                 logger.info(f"   - Filtering to: {file_ids}")
+            
+            # Log page distribution
+            pages_used = {}
+            for chunk in retrieved_chunks:
+                page = chunk.metadata.get('page_number', 'unknown')
+                filename = chunk.metadata.get('filename', 'unknown')
+                key = f"{filename}:{page}"
+                pages_used[key] = pages_used.get(key, 0) + 1
+            logger.info(f"   - Pages used: {pages_used}")
             logger.info("-" * 100)
             logger.info("📝 FULL PROMPT CONTENT:")
             logger.info("-" * 100)
@@ -139,6 +160,23 @@ class LLMService:
             # 6. GENERATE
             response = await self.llm.ainvoke(formatted_messages)
             answer = response.content.strip()
+            
+            # 7. Add source summary at the end of the answer (if not already cited)
+            # Check if answer already has citations
+            if "[Source:" not in answer and "[" not in answer:
+                # Add source summary
+                sources = []
+                seen = set()
+                for chunk in retrieved_chunks[:5]:  # Top 5 sources
+                    filename = chunk.metadata.get('filename', 'Unknown.pdf')
+                    page_num = chunk.metadata.get('page_number', 'N/A')
+                    key = f"{filename}:{page_num}"
+                    if key not in seen:
+                        seen.add(key)
+                        sources.append(f"  • {filename} (Page {page_num})")
+                
+                if sources:
+                    answer += f"\n\n**Sources:**\n" + "\n".join(sources)
             
             logger.info(f"💬 Response: {answer[:300]}...")
             return answer
@@ -156,7 +194,7 @@ class LLMService:
         history: Optional[List[Dict[str, str]]] = None
     ) -> Dict[str, Any]:
         """
-        Generate answer and return with source documents.
+        Generate answer and return with source documents including PDF filename and page numbers.
         
         Args:
             prompt: User question
@@ -164,7 +202,7 @@ class LLMService:
             history: Optional conversation history
         
         Returns:
-            Dictionary with answer and sources
+            Dictionary with answer, sources (with filename and page numbers)
         """
         try:
             logger.info(f"📝 User Question: {prompt}")
@@ -186,10 +224,15 @@ class LLMService:
                     "total_chunks_retrieved": 0
                 }
             
-            context_text = "\n\n---\n\n".join([
-                f"[Source: {chunk.metadata.get('filename', 'unknown')}]\n{chunk.page_content}"
-                for chunk in retrieved_chunks
-            ])
+            # Build context with source info
+            context_parts = []
+            for chunk in retrieved_chunks:
+                filename = chunk.metadata.get('filename', 'Unknown.pdf')
+                page_num = chunk.metadata.get('page_number', 'Unknown')
+                context_parts.append(
+                    f"[Source: {filename}, Page: {page_num}]\n{chunk.page_content}"
+                )
+            context_text = "\n\n---\n\n".join(context_parts)
             
             # Build history string
             history_text = ""
@@ -204,7 +247,7 @@ class LLMService:
                         history_lines.append(f"Assistant: {content}")
                 history_text = "Previous conversation:\n" + "\n".join(history_lines) + "\n"
             
-            # HIGHLY VISIBLE PROMPT LOGGING WITH SOURCES
+            # Log prompt with sources
             logger.info("=" * 100)
             logger.info("🤖🤖🤖 FINAL PROMPT SENT TO OLLAMA (WITH SOURCES) 🤖🤖🤖")
             logger.info("=" * 100)
@@ -231,17 +274,25 @@ class LLMService:
             response = await self.llm.ainvoke(formatted_messages)
             answer = response.content.strip()
             
-            sources = [
-                {
+            # Build sources with filename and page number
+            sources = []
+            seen = set()
+            for i, chunk in enumerate(retrieved_chunks, 1):
+                filename = chunk.metadata.get('filename', 'Unknown.pdf')
+                page_num = chunk.metadata.get('page_number', 'Unknown')
+                doc_id = chunk.metadata.get('document_id', '')
+                
+                source = {
                     "rank": i,
                     "content_preview": chunk.page_content[:200],
                     "full_content": chunk.page_content,
-                    "document_id": chunk.metadata.get('document_id'),
-                    "filename": chunk.metadata.get('filename'),
-                    "reranker_score": chunk.metadata.get('reranker_score')
+                    "document_id": doc_id,
+                    "filename": filename,  # ✅ PDF filename
+                    "page_number": page_num,  # ✅ Page number
+                    "reranker_score": chunk.metadata.get('reranker_score'),
+                    "chunk_index": chunk.metadata.get('chunk_index')
                 }
-                for i, chunk in enumerate(retrieved_chunks, 1)
-            ]
+                sources.append(source)
             
             return {
                 "answer": answer,

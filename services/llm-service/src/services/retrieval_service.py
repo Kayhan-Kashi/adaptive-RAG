@@ -1,6 +1,7 @@
 # services/retrieval_service.py
 import logging
 import os
+import warnings
 from typing import List, Optional, Dict, Any
 from injector import inject
 from langchain_community.retrievers import BM25Retriever
@@ -28,7 +29,7 @@ class RetrievalService:
     - FAISS similarity search (with MMR)
     - BM25 keyword search
     - Ensemble combination
-    - Cross-encoder reranking
+    - Cross-encoder reranking (optimized for speed)
     - File filtering
     """
     
@@ -61,24 +62,42 @@ class RetrievalService:
             "/app/models/BAAI/models--BAAI--bge-reranker-v2-m3"
         )
         
+        # ============ RERANKER OPTIMIZATION SETTINGS ============
+        self.reranker_batch_size = int(os.getenv("RERANKER_BATCH_SIZE", "32"))  # Batch processing
+        self.reranker_use_fp16 = os.getenv("RERANKER_USE_FP16", "true").lower() == "true"
+        self.reranker_cache_size = int(os.getenv("RERANKER_CACHE_SIZE", "1000"))  # LRU cache
+        self.reranker_max_length = int(os.getenv("RERANKER_MAX_LENGTH", "512"))  # Truncate long texts
+        self.reranker_skip_scores = os.getenv("RERANKER_SKIP_SCORES", "false").lower() == "true"  # Skip storing scores
+        
         # ============ END OPTIMIZED PARAMETERS ============
         
         # Load reranker
         if self.enable_reranker:
             self._load_reranker()
         
+        # Cache for query-document scores (simple LRU)
+        self._score_cache = {}
+        self._cache_max_size = self.reranker_cache_size
+        
         logger.info("✅ RetrievalService initialized")
         logger.info(f"   Reranker available: {self.reranker is not None}")
+        logger.info(f"   Reranker batch size: {self.reranker_batch_size}")
+        logger.info(f"   Reranker FP16: {self.reranker_use_fp16}")
+        logger.info(f"   Reranker max length: {self.reranker_max_length}")
         logger.info(f"   MMR: fetch_k={self.mmr_fetch_k}, lambda={self.mmr_lambda_mult}")
         logger.info(f"   Ensemble: FAISS={self.default_faiss_weight}, BM25={self.default_bm25_weight}")
         logger.info(f"   Retrieval k: FAISS={self.default_faiss_k}, BM25={self.default_bm25_k}")
     
     def _load_reranker(self):
-        """Load reranker model from configured path"""
+        """Load reranker model with optimizations"""
         if not RERANKER_AVAILABLE:
             return
         
         try:
+            # Suppress tokenizer warnings
+            logging.getLogger("transformers.tokenization_utils_base").setLevel(logging.ERROR)
+            warnings.filterwarnings("ignore", category=UserWarning, module="transformers")
+            
             base_path = self.reranker_model_path
             
             if not os.path.exists(base_path):
@@ -88,18 +107,25 @@ class RetrievalService:
             
             # Check for snapshots (HuggingFace cache format)
             snapshots_path = os.path.join(base_path, 'snapshots')
+            model_path = base_path
+            
             if os.path.exists(snapshots_path):
                 snapshots = [d for d in os.listdir(snapshots_path) 
                            if os.path.isdir(os.path.join(snapshots_path, d))]
                 if snapshots:
                     model_path = os.path.join(snapshots_path, snapshots[0])
-                    self.reranker = FlagReranker(model_path, use_fp16=True)
-                    logger.info(f"✅ Reranker loaded from snapshot: {model_path}")
-                    return
             
-            # Direct load
-            self.reranker = FlagReranker(base_path, use_fp16=True)
-            logger.info(f"✅ Reranker loaded from: {base_path}")
+            # Load with optimizations
+            self.reranker = FlagReranker(
+                model_path, 
+                use_fp16=self.reranker_use_fp16,
+                # Additional optimizations
+                device="cuda" if self.reranker_use_fp16 else "cpu",
+            )
+            
+            logger.info(f"✅ Reranker loaded from: {model_path}")
+            logger.info(f"   FP16: {self.reranker_use_fp16}")
+            logger.info(f"   Device: {'cuda' if self.reranker_use_fp16 else 'cpu'}")
                     
         except Exception as e:
             logger.warning(f"Failed to load reranker: {e}")
@@ -118,16 +144,7 @@ class RetrievalService:
         Main retrieval pipeline with optimized parameters:
         1. FAISS (with MMR) + BM25 ensemble
         2. Optional file filtering
-        3. Reranking (cross-encoder)
-        
-        Args:
-            query: User query
-            k: Number of results to return
-            file_ids: Optional list of file IDs to filter by
-            use_reranker: Override reranker setting
-        
-        Returns:
-            List of top-k relevant Document chunks
+        3. Reranking (cross-encoder) - optimized for speed
         """
         # Determine if reranker should be used
         if use_reranker is None:
@@ -138,7 +155,7 @@ class RetrievalService:
         if file_ids:
             candidate_k = candidate_k * 2
         
-        # Step 1: Get results from FAISS and BM25 with optimized k
+        # Step 1: Get results from FAISS and BM25
         faiss_results = self._faiss_search(query, candidate_k)
         bm25_results = self._bm25_search(query, candidate_k)
         
@@ -156,9 +173,9 @@ class RetrievalService:
         if not combined:
             return []
         
-        # Step 4: Rerank (cross-encoder) if enabled
+        # Step 4: Rerank (cross-encoder) if enabled - OPTIMIZED
         if use_reranker and self.reranker:
-            combined = self._rerank(query, combined, top_k=k)
+            combined = self._rerank_optimized(query, combined, top_k=k)
         else:
             combined = combined[:k]
         
@@ -216,27 +233,91 @@ class RetrievalService:
         
         return combined
     
-    def _rerank(self, query: str, chunks: List[Document], top_k: int) -> List[Document]:
-        """Rerank chunks using cross-encoder with optimized batch processing"""
+    def _rerank_optimized(self, query: str, chunks: List[Document], top_k: int) -> List[Document]:
+        """
+        Optimized reranking using cross-encoder with:
+        - Batch processing
+        - Text truncation
+        - Score caching
+        - Parallel processing (via batch)
+        """
         if not self.reranker or not chunks:
             return chunks[:top_k]
         
         try:
+            # Limit number of chunks to rerank
             rerank_limit = min(len(chunks), self.rerank_top_k * 3)
             chunks_to_rerank = chunks[:rerank_limit]
             
-            texts = [chunk.page_content for chunk in chunks_to_rerank]
-            scores = self.reranker.compute_score([(query, text) for text in texts])
+            # Prepare texts with truncation for speed
+            texts = []
+            for chunk in chunks_to_rerank:
+                content = chunk.page_content
+                # Truncate to max length for faster processing
+                if len(content) > self.reranker_max_length:
+                    content = content[:self.reranker_max_length]
+                texts.append(content)
             
-            ranked = list(zip(chunks_to_rerank, scores))
+            # Check cache for scores
+            cached_scores = []
+            chunks_to_compute = []
+            chunks_to_compute_indices = []
+            
+            for i, text in enumerate(texts):
+                cache_key = f"{query[:100]}:{text[:100]}"  # Short key for speed
+                if cache_key in self._score_cache:
+                    cached_scores.append(self._score_cache[cache_key])
+                else:
+                    chunks_to_compute.append(text)
+                    chunks_to_compute_indices.append(i)
+                    cached_scores.append(None)  # Placeholder
+            
+            # Compute scores in batches for speed
+            if chunks_to_compute:
+                # Process in batches
+                batch_size = self.reranker_batch_size
+                computed_scores = []
+                
+                for i in range(0, len(chunks_to_compute), batch_size):
+                    batch_texts = chunks_to_compute[i:i + batch_size]
+                    batch_pairs = [(query, text) for text in batch_texts]
+                    
+                    # Compute scores for batch
+                    batch_scores = self.reranker.compute_score(batch_pairs)
+                    
+                    # Handle single score vs list
+                    if isinstance(batch_scores, float):
+                        batch_scores = [batch_scores]
+                    elif not isinstance(batch_scores, list):
+                        batch_scores = list(batch_scores)
+                    
+                    computed_scores.extend(batch_scores)
+                
+                # Update cache with computed scores
+                for idx, score in zip(chunks_to_compute_indices, computed_scores):
+                    cache_key = f"{query[:100]}:{texts[idx][:100]}"
+                    self._score_cache[cache_key] = score
+                    
+                    # Limit cache size
+                    if len(self._score_cache) > self._cache_max_size:
+                        # Remove oldest entry (simple)
+                        self._score_cache.pop(next(iter(self._score_cache)))
+                    
+                    cached_scores[idx] = score
+            
+            # Pair chunks with scores
+            ranked = list(zip(chunks_to_rerank, cached_scores))
             ranked.sort(key=lambda x: x[1], reverse=True)
             
-            for chunk, score in ranked:
-                chunk.metadata['reranker_score'] = score
+            # Store scores on chunks (optionally skip for speed)
+            if not self.reranker_skip_scores:
+                for chunk, score in ranked:
+                    chunk.metadata['reranker_score'] = score
             
-            logger.info("🎯 Reranker scores:")
-            for i, (chunk, score) in enumerate(ranked[:5], 1):
-                preview = chunk.page_content[:150].replace('\n', ' ')
+            # Log only top scores (limited logging for speed)
+            logger.info(f"🎯 Reranked {len(ranked)} chunks:")
+            for i, (chunk, score) in enumerate(ranked[:3], 1):  # Only log top 3 for speed
+                preview = chunk.page_content[:100].replace('\n', ' ')
                 filename = chunk.metadata.get('filename', 'unknown')
                 logger.info(f"   {i}. Score={score:.4f} - {preview}... (from: {filename})")
             
@@ -311,6 +392,10 @@ class RetrievalService:
             "reranker_available": self.reranker is not None,
             "enable_reranker": self.enable_reranker,
             "reranker_model_path": self.reranker_model_path,
+            "reranker_batch_size": self.reranker_batch_size,
+            "reranker_use_fp16": self.reranker_use_fp16,
+            "reranker_max_length": self.reranker_max_length,
+            "reranker_cache_size": self.reranker_cache_size,
             "mmr": {
                 "fetch_k": self.mmr_fetch_k,
                 "lambda_mult": self.mmr_lambda_mult
@@ -325,3 +410,8 @@ class RetrievalService:
                 "top_k": self.rerank_top_k
             }
         }
+    
+    def clear_cache(self):
+        """Clear reranker score cache"""
+        self._score_cache.clear()
+        logger.info("🗑️ Reranker cache cleared")

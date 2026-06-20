@@ -88,6 +88,7 @@ services:
         - TRANSFORMERS_OFFLINE=1
         - HF_HUB_DISABLE_SYMLINKS_WARNING=1
         - HF_HOME=/app/models/hf_cache
+        - USE_HYDE=False
       volumes:
         # - uploads-data:/app/uploads 
         - ./uploaded_files:/app/uploads 

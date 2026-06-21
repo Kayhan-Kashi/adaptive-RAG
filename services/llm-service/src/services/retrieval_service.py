@@ -53,11 +53,11 @@ class RetrievalService:
             "/app/models/BAAI/models--BAAI--bge-reranker-v2-m3"
         )
         
-        self.reranker_batch_size = int(os.getenv("RERANKER_BATCH_SIZE", "32"))  # Batch processing
+        self.reranker_batch_size = int(os.getenv("RERANKER_BATCH_SIZE", "32"))
         self.reranker_use_fp16 = os.getenv("RERANKER_USE_FP16", "true").lower() == "true"
-        self.reranker_cache_size = int(os.getenv("RERANKER_CACHE_SIZE", "1000"))  # LRU cache
-        self.reranker_max_length = int(os.getenv("RERANKER_MAX_LENGTH", "512"))  # Truncate long texts
-        self.reranker_skip_scores = os.getenv("RERANKER_SKIP_SCORES", "false").lower() == "true"  # Skip storing scores
+        self.reranker_cache_size = int(os.getenv("RERANKER_CACHE_SIZE", "1000"))
+        self.reranker_max_length = int(os.getenv("RERANKER_MAX_LENGTH", "512"))
+        self.reranker_skip_scores = os.getenv("RERANKER_SKIP_SCORES", "false").lower() == "true"
         
         if self.enable_reranker:
             self._load_reranker()
@@ -75,42 +75,84 @@ class RetrievalService:
         logger.info(f"   Retrieval k: FAISS={self.default_faiss_k}, BM25={self.default_bm25_k}")
     
     def _load_reranker(self):
-        """Load reranker model with optimizations"""
+        """
+        Load reranker model with detailed logging.
+        """
         if not RERANKER_AVAILABLE:
+            logger.warning("⚠️ FlagEmbedding not available. Reranking disabled.")
             return
         
+        logger.info("=" * 70)
+        logger.info("🔄 LOADING RERANKER MODEL")
+        logger.info("=" * 70)
+        
         try:
+            # Suppress annoying warnings
             logging.getLogger("transformers.tokenization_utils_base").setLevel(logging.ERROR)
             warnings.filterwarnings("ignore", category=UserWarning, module="transformers")
             
             base_path = self.reranker_model_path
+            logger.info(f"📂 Checking path: {base_path}")
             
             if not os.path.exists(base_path):
-                logger.warning(f"Reranker model not found at: {base_path}")
+                logger.warning(f"❌ Reranker model not found at: {base_path}")
+                logger.warning("   Please ensure the model is downloaded to this location.")
+                logger.info("   You can set RERANKER_MODEL_PATH environment variable.")
                 self.reranker = None
                 return
             
+            logger.info(f"✅ Model directory found: {base_path}")
+            
+            # Check for snapshots (HuggingFace cache format)
             snapshots_path = os.path.join(base_path, 'snapshots')
             model_path = base_path
             
             if os.path.exists(snapshots_path):
+                logger.info(f"📁 Found snapshots directory: {snapshots_path}")
                 snapshots = [d for d in os.listdir(snapshots_path) 
                            if os.path.isdir(os.path.join(snapshots_path, d))]
                 if snapshots:
                     model_path = os.path.join(snapshots_path, snapshots[0])
+                    logger.info(f"   Using snapshot: {snapshots[0]}")
+                    logger.info(f"   Model path: {model_path}")
+            else:
+                logger.info(f"📁 Using model path: {model_path}")
             
+            # Check for config.json
+            config_path = os.path.join(model_path, "config.json")
+            if os.path.exists(config_path):
+                logger.info(f"✅ config.json found")
+            else:
+                logger.warning(f"⚠️ config.json not found at {config_path}")
+            
+            # Log what we're loading
+            logger.info("-" * 70)
+            logger.info("📦 Loading FlagReranker with settings:")
+            logger.info(f"   Model path: {model_path}")
+            logger.info(f"   FP16: {self.reranker_use_fp16}")
+            logger.info(f"   Device: {'cuda' if self.reranker_use_fp16 else 'cpu'}")
+            logger.info("-" * 70)
+            logger.info("⏳ Loading model into memory (this may take a moment)...")
+            
+            # Load the model
             self.reranker = FlagReranker(
                 model_path, 
                 use_fp16=self.reranker_use_fp16,
                 device="cuda" if self.reranker_use_fp16 else "cpu",
             )
             
-            logger.info(f"✅ Reranker loaded from: {model_path}")
+            logger.info("=" * 70)
+            logger.info(f"✅ Reranker loaded successfully!")
+            logger.info(f"   Path: {model_path}")
             logger.info(f"   FP16: {self.reranker_use_fp16}")
             logger.info(f"   Device: {'cuda' if self.reranker_use_fp16 else 'cpu'}")
+            logger.info("=" * 70)
                     
         except Exception as e:
-            logger.warning(f"Failed to load reranker: {e}")
+            logger.error("=" * 70)
+            logger.error(f"❌ Failed to load reranker: {e}")
+            logger.error("   Falling back to no reranker. Retrieval will still work.")
+            logger.error("=" * 70)
             self.reranker = None
     
     

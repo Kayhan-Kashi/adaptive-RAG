@@ -13,7 +13,7 @@ services:
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,INTERNAL://kafka:29092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
-      KAFKA_LOG_DIRS: /var/lib/kafka/data  # Changed from /tmp/kraft-combined-logs
+      KAFKA_LOG_DIRS: /var/lib/kafka/data  
       KAFKA_NUM_PARTITIONS: 3
       KAFKA_CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
@@ -21,7 +21,7 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
     volumes:
-      - kafka-data:/var/lib/kafka/data  # Updated volume path
+      - kafka-data:/var/lib/kafka/data 
     networks:
       - rag-net
     healthcheck:
@@ -30,6 +30,7 @@ services:
         timeout: 10s
         retries: 5
         start_period: 30s
+
 
   kafdrop:
     image: obsidiandynamics/kafdrop
@@ -59,14 +60,13 @@ services:
       - ENVIRONMENT=production
     volumes:
       - ./data:/app/data
-      # - rag-chat-data:/app/data
-      # - uploads-data:/app/uploads
       - ./uploaded_files:/app/uploads 
     depends_on:
       - kafka
     networks:
       - rag-net
     working_dir: /app
+
 
   rag-llm-service:
       build:
@@ -90,7 +90,6 @@ services:
         - HF_HOME=/app/models/hf_cache
         - USE_HYDE=False
       volumes:
-        # - uploads-data:/app/uploads 
         - ./uploaded_files:/app/uploads 
         - ./models/snapshot/jina-embeddings-v3:/app/models/snapshot/jina-embeddings-v3
         - ./models/hf_cache:/app/models/hf_cache
@@ -102,32 +101,8 @@ services:
       networks:
         - rag-net
       working_dir: /app
-
-  # rag-jina-service:
-  #     build:
-  #       context: .
-  #       dockerfile: services/jina-service/Dockerfile
-  #     container_name: rag-jina-service
-  #     environment:
-  #       - MODEL_PATH=/app/models/snapshot/jina-embeddings-v3
-  #       # Remove or comment out these flags so the script can download the model initially
-  #       - HF_HUB_OFFLINE=1
-  #       - TRANSFORMERS_OFFLINE=1
-  #       - HF_HUB_DISABLE_SYMLINKS_WARNING=1
-  #       - HF_HOME=/app/models/hf_cache
-  #     volumes:
-  #       # Match the path exactly to what the Python script uses
-  #       - ./models/snapshot/jina-embeddings-v3:/app/models/snapshot/jina-embeddings-v3
-  #       # Optional: Persist the HF cache to avoid re-downloading system files
-  #       - ./models/hf_cache:/app/models/hf_cache
-  #     networks:
-  #       - rag-net
-  #     working_dir: /app
-
-    # ============================================
-    # Frontend Service
-    # ============================================
       
+
   react-app:
     build:
       context: ./rag-react-app
@@ -136,8 +111,8 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - REACT_APP_API_URL=http://rag-chat-service:8000  # Internal Docker service name
-      - REACT_APP_WS_URL=ws://rag-chat-service:8000    # Internal Docker service name
+      - REACT_APP_API_URL=http://rag-chat-service:8000  
+      - REACT_APP_WS_URL=ws://rag-chat-service:8000    
     depends_on:
       - rag-chat-service
     networks:
@@ -147,6 +122,7 @@ services:
 networks:
   rag-net:
     driver: bridge
+
 
 volumes:
   kafka-data:

@@ -11,11 +11,9 @@ RUN pip install -r requirements.txt --index-url ${PIP_INDEX_URL}
 
 RUN pip install python-multipart --index-url ${PIP_INDEX_URL}
 
-# Copy shared module
 COPY shared/ ./shared/
 RUN pip install ./shared --index-url ${PIP_INDEX_URL}
 
-# Copy src CONTENTS directly to /app (not as subdirectory)
 COPY services/chat-service/src/ ./
 
 ENV PYTHONPATH=/app
@@ -23,5 +21,4 @@ RUN mkdir -p /app/data
 
 EXPOSE 8000
 
-# Run main directly (not src.main)
 CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

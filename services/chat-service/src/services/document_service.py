@@ -1,4 +1,3 @@
-# src/services/document_service.py
 import uuid
 import os
 import shutil

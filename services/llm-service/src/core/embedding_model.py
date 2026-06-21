@@ -8,7 +8,6 @@ logger = logging.getLogger(__name__)
 class EmbeddingModel:
     @inject
     def __init__(self):
-        # 1. Config setup
         self.model_path = os.getenv("MODEL_PATH", "/app/models/snapshot/jina-embeddings-v3")
         
         # We check the environment to set the offline flag

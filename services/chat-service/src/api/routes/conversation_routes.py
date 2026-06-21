@@ -1,4 +1,3 @@
-# src/api/routes/conversation_routes.py
 from fastapi import APIRouter, Depends
 from fastapi_injector import Injected
 from sqlmodel import Session

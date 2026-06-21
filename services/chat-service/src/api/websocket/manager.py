@@ -1,4 +1,3 @@
-# elearning-service/src/api/websocket/manager.py
 from datetime import datetime
 import logging
 from typing import Dict
@@ -19,7 +18,6 @@ class ConnectionManager:
     def disconnect(self, user_id: str):
         if user_id in self.active_connections:
             del self.active_connections[user_id]
-            # Clean up conversation routing
             conversations_to_remove = [
                 conv_id for conv_id, uid in self.conversation_routing.items() if uid == user_id
             ]
@@ -48,7 +46,7 @@ class ConnectionManager:
             await self.active_connections[user_id].send_json({
                 "type": "answer",
                 "conversation_id": conversation_id,
-                "answer": answer,  # This should be 'answer', not 'full_answer'
+                "answer": answer, 
                 "timestamp": datetime.utcnow().isoformat()
             })
             logger.info(f"📤 Answer sent to user {user_id} for conversation {conversation_id[:8]}...")

@@ -1,4 +1,3 @@
-# elearning-service/src/api/routes/websocket_routes.py
 import logging
 from datetime import datetime
 from typing import List, Optional

@@ -1,4 +1,3 @@
-# src/api/schemas/document_schemas.py
 from pydantic import BaseModel
 from datetime import datetime
 from typing import List, Dict

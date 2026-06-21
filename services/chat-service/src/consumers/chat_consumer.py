@@ -120,10 +120,9 @@ class ChatConsumer:
         except Exception as e:
             logger.error(f"Failed to update database: {e}")
         
-        # Send to WebSocket - use 'answer' not 'full_answer'
         success = await connection_manager.send_answer(
             conversation_id=conversation_id,
-            answer=full_answer  # Changed from full_answer to answer
+            answer=full_answer  
         )
         
         if success:

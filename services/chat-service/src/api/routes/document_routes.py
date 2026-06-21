@@ -1,4 +1,3 @@
-# src/api/routes/document_routes.py
 from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, Query
 from fastapi_injector import Injected
 from sqlmodel import Session

@@ -1,4 +1,3 @@
-# elearning-service/src/workers/worker.py
 import asyncio
 import json
 import traceback

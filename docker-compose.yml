@@ -75,8 +75,6 @@ services:
       container_name: rag-llm-service
       environment:
         - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
-        - INPUT_TOPIC=prompt-answer-requests
-        - OUTPUT_TOPIC=prompt-answer-completed
         - CONSUMER_GROUP=llm-worker-group
         - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
         - OLLAMA_MODEL=gemma3:12b

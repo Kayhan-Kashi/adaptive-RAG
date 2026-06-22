@@ -1,4 +1,3 @@
-# src/core/reranker.py
 import logging
 import os
 import warnings
@@ -24,9 +23,8 @@ class RerankerModel:
     @inject
     def __init__(self):
         self._reranker = None
-        self._is_available = RERANKER_AVAILABLE  # Private attribute
+        self._is_available = RERANKER_AVAILABLE 
         
-        # Model configuration
         self.model_path = os.getenv(
             "RERANKER_MODEL_PATH", 
             "/app/models/BAAI/models--BAAI--bge-reranker-v2-m3"
@@ -36,20 +34,16 @@ class RerankerModel:
             "BAAI/bge-reranker-v2-m3"
         )
         
-        # Model settings
         self.use_fp16 = os.getenv("RERANKER_USE_FP16", "true").lower() == "true"
         
-        # Optimization settings
         self.batch_size = int(os.getenv("RERANKER_BATCH_SIZE", "32"))
         self.max_length = int(os.getenv("RERANKER_MAX_LENGTH", "512"))
         self.limit = int(os.getenv("RERANKER_LIMIT", "30"))
         self.skip_scores = os.getenv("RERANKER_SKIP_SCORES", "false").lower() == "true"
         
-        # Cache
         self._score_cache = {}
         self._cache_max_size = int(os.getenv("RERANKER_CACHE_SIZE", "1000"))
         
-        # Load the model
         self._load()
         
         logger.info("✅ RerankerModel initialized")
@@ -82,16 +76,12 @@ class RerankerModel:
         logger.info("=" * 70)
         
         try:
-            # Suppress annoying warnings
             logging.getLogger("transformers.tokenization_utils_base").setLevel(logging.ERROR)
             warnings.filterwarnings("ignore", category=UserWarning, module="transformers")
             
             base_path = self.model_path
             logger.info(f"📂 Checking path: {base_path}")
             
-            # ================================================================
-            # CHECK IF MODEL EXISTS, DOWNLOAD IF NOT
-            # ================================================================
             config_path = os.path.join(base_path, "config.json")
             
             if not os.path.exists(config_path):
@@ -107,11 +97,11 @@ class RerankerModel:
                     repo_id=self.model_repo_id,
                     local_dir=base_path,
                     ignore_patterns=[
-                        "*.msgpack",      # Flax
-                        "flax_model*",    # Flax
-                        "tf_model*",      # TensorFlow
-                        "*.onnx",         # ONNX
-                        "onnx/*"          # ONNX
+                        "*.msgpack",      
+                        "flax_model*",    
+                        "tf_model*",      
+                        "*.onnx",         
+                        "onnx/*"          
                     ]
                 )
                 
@@ -119,7 +109,6 @@ class RerankerModel:
             
             logger.info(f"✅ Model directory found: {base_path}")
             
-            # Check for snapshots (HuggingFace cache format)
             snapshots_path = os.path.join(base_path, 'snapshots')
             model_path = base_path
             
@@ -134,14 +123,12 @@ class RerankerModel:
             else:
                 logger.info(f"📁 Using model path: {model_path}")
             
-            # Verify config.json exists
             config_path = os.path.join(model_path, "config.json")
             if os.path.exists(config_path):
                 logger.info(f"✅ config.json found")
             else:
                 logger.warning(f"⚠️ config.json not found at {config_path}")
             
-            # Log what we're loading
             logger.info("-" * 70)
             logger.info("📦 Loading FlagReranker with settings:")
             logger.info(f"   Model path: {model_path}")
@@ -150,7 +137,6 @@ class RerankerModel:
             logger.info("-" * 70)
             logger.info("⏳ Loading model into memory (this may take a moment)...")
             
-            # Load the model
             self._reranker = FlagReranker(
                 model_path, 
                 use_fp16=self.use_fp16,
@@ -189,7 +175,6 @@ class RerankerModel:
             batch_pairs = [(query, text) for text in texts]
             scores = self._reranker.compute_score(batch_pairs)
             
-            # Handle different return types
             if isinstance(scores, float):
                 scores = [scores]
             elif not isinstance(scores, list):

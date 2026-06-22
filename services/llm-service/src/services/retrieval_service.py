@@ -1,4 +1,3 @@
-# services/retrieval_service.py
 import logging
 import os
 from typing import List, Optional, Dict, Any
@@ -34,23 +33,18 @@ class RetrievalService:
         self.ingestion = ingestion_service
         self.reranker_model = reranker_model
         
-        # MMR configuration
         self.mmr_fetch_k = int(os.getenv("MMR_FETCH_K", "200"))
         self.mmr_lambda_mult = float(os.getenv("MMR_LAMBDA_MULT", "0.5"))
         
-        # Ensemble weights
         self.default_faiss_weight = float(os.getenv("FAISS_WEIGHT", "0.6"))
         self.default_bm25_weight = float(os.getenv("BM25_WEIGHT", "0.4"))
         
-        # Retrieval counts
         self.default_faiss_k = int(os.getenv("FAISS_RETRIEVAL_K", "100"))
         self.default_bm25_k = int(os.getenv("BM25_RETRIEVAL_K", "100"))
         
-        # Reranking configuration
         self.rerank_top_k = int(os.getenv("RERANK_TOP_K", "10"))
         self.enable_reranker = os.getenv("ENABLE_RERANKER", "true").lower() == "true"
         
-        # Score cache (using reranker_model's cache)
         self._score_cache = self.reranker_model._score_cache
         self._cache_max_size = self.reranker_model._cache_max_size
         
@@ -76,34 +70,28 @@ class RetrievalService:
         2. Optional file filtering
         3. Reranking (cross-encoder) - optimized for speed
         """
-        # Check if we should use reranker
         if use_reranker is None:
             use_reranker = self.enable_reranker and self.reranker_model.is_available()
         
-        # Get more candidates for reranking
         candidate_k = k * 3 if use_reranker else k
         if file_ids:
             candidate_k = candidate_k * 2
         
-        # Step 1: Get results from FAISS and BM25
         faiss_results = self._faiss_search(query, candidate_k)
         bm25_results = self._bm25_search(query, candidate_k)
         
-        # Step 2: Filter by file_ids if provided
         if file_ids:
             file_id_set = set(str(fid) for fid in file_ids)
             faiss_results = [d for d in faiss_results if str(d.metadata.get('document_id')) in file_id_set]
             bm25_results = [d for d in bm25_results if str(d.metadata.get('document_id')) in file_id_set]
             logger.info(f"📁 Filtered to {len(faiss_results)} FAISS, {len(bm25_results)} BM25 results")
         
-        # Step 3: Combine and deduplicate
         combined = self._combine_results(faiss_results, bm25_results)
         logger.info(f"📊 Combined {len(combined)} unique results")
         
         if not combined:
             return []
         
-        # Step 4: Rerank if enabled
         if use_reranker and self.reranker_model.is_available():
             combined = self._rerank_optimized(query, combined, top_k=k)
         else:
@@ -175,11 +163,9 @@ class RetrievalService:
             return chunks[:top_k]
         
         try:
-            # Limit chunks to rerank
             rerank_limit = min(len(chunks), self.reranker_model.limit)
             chunks_to_rerank = chunks[:rerank_limit]
             
-            # Truncate text for speed
             texts = []
             for chunk in chunks_to_rerank:
                 content = chunk.page_content
@@ -187,7 +173,6 @@ class RetrievalService:
                     content = content[:self.reranker_model.max_length]
                 texts.append(content)
             
-            # Check cache for scores
             cached_scores = []
             chunks_to_compute = []
             chunks_to_compute_indices = []
@@ -201,9 +186,7 @@ class RetrievalService:
                     chunks_to_compute_indices.append(i)
                     cached_scores.append(None)
             
-            # Compute scores for uncached chunks
             if chunks_to_compute:
-                # Process in batches
                 batch_size = self.reranker_model.batch_size
                 computed_scores = []
                 
@@ -212,27 +195,22 @@ class RetrievalService:
                     batch_scores = self.reranker_model.compute_scores(query, batch_texts)
                     computed_scores.extend(batch_scores)
                 
-                # Update cache
                 for idx, score in zip(chunks_to_compute_indices, computed_scores):
                     cache_key = f"{query[:100]}:{texts[idx][:100]}"
                     self._score_cache[cache_key] = score
                     
-                    # Limit cache size
                     if len(self._score_cache) > self._cache_max_size:
                         self._score_cache.pop(next(iter(self._score_cache)))
                     
                     cached_scores[idx] = score
             
-            # Pair chunks with scores and sort
             ranked = list(zip(chunks_to_rerank, cached_scores))
             ranked.sort(key=lambda x: x[1], reverse=True)
             
-            # Store scores on chunks
             if not self.reranker_model.skip_scores:
                 for chunk, score in ranked:
                     chunk.metadata['reranker_score'] = score
             
-            # Log results (top 3 only for speed)
             logger.info(f"🎯 Reranked {len(ranked)} chunks:")
             for i, (chunk, score) in enumerate(ranked[:3], 1):
                 preview = chunk.page_content[:100].replace('\n', ' ')

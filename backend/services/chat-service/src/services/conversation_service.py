@@ -345,6 +345,7 @@ class ConversationService:
             logger.error(f"❌ Invalid UUID format for user_id: {user_id}")
             raise HTTPException(status_code=400, detail="Invalid UUID format for user_id")
     
+
     def update_dialogue_answer(self, session: Session, dialogue_id: str, answer: str):
         """Update a dialogue with the assistant's answer"""
         try:
@@ -355,8 +356,7 @@ class ConversationService:
             
             dialogue.answer = answer
             dialogue.updated_at = datetime.utcnow()
-            dialogue.is_complete = True
-            dialogue.completed_at = datetime.utcnow()
+            session.add(dialogue)
             session.commit()
             session.refresh(dialogue)
             

@@ -47,10 +47,30 @@ async def websocket_endpoint(
                     })
                     logger.debug(f"🏓 Sent pong to user {user_id}")
                 
+                # ✅ Handle register_conversation message
+                elif msg_type == "register_conversation":
+                    conversation_id = data.get("conversation_id")
+                    if conversation_id:
+                        connection_manager.register_conversation(conversation_id, user_id)
+                        await websocket.send_json({
+                            "type": "ack",
+                            "message": "Conversation registered successfully",
+                            "conversation_id": conversation_id,
+                            "timestamp": datetime.utcnow().isoformat()
+                        })
+                        logger.info(f"✅ Conversation {conversation_id[:8]}... registered for user {user_id}")
+                    else:
+                        await websocket.send_json({
+                            "type": "error",
+                            "error": "Missing conversation_id",
+                            "timestamp": datetime.utcnow().isoformat()
+                        })
+                        logger.warning(f"⚠️ register_conversation missing conversation_id from user {user_id}")
+                
                 elif msg_type == "chat":
                     conversation_id = data.get("conversation_id")
                     prompt = data.get("prompt")
-                    file_ids: Optional[List[str]] = data.get("file_ids", [])  # ← Extract file_ids
+                    file_ids: Optional[List[str]] = data.get("file_ids", [])
                     
                     logger.info(f"💬 Chat message from user {user_id} in conversation {conversation_id}")
                     logger.info(f"   Prompt: {prompt[:100]}...")
@@ -74,11 +94,10 @@ async def websocket_endpoint(
                         "type": "ack",
                         "conversation_id": conversation_id,
                         "dialogue_id": str(dialogue_id),
-                        "file_ids": file_ids,  # ← Include file_ids in acknowledgment
+                        "file_ids": file_ids,
                         "timestamp": datetime.utcnow().isoformat()
                     })
                     logger.debug(f"✅ Sent acknowledgment to user {user_id}")
-                    
                 
                 else:
                     logger.warning(f"⚠️ Unknown message type from user {user_id}: {msg_type}")

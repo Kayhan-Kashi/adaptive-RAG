@@ -27,24 +27,84 @@ function App() {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [showFileSelector, setShowFileSelector] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState(null);
+  const [isStreaming, setIsStreaming] = useState(false); // ✅ Track streaming state
   
   const wsRef = useRef(null);
   const messageQueueRef = useRef([]);
 
+  const getStatusBadge = (status) => {
+    const normalizedStatus = status === 'indexed' ? 'completed' : status;
+    
+    const statusMap = {
+      'pending': { icon: '⏳', text: 'Pending', color: '#f59e0b' },
+      'indexing': { icon: '🔄', text: 'Indexing...', color: '#3b82f6' },
+      'completed': { icon: '✅', text: 'Ready', color: '#10b981' },
+      'failed': { icon: '❌', text: 'Failed', color: '#ef4444' }
+    };
+    return statusMap[normalizedStatus] || statusMap['pending'];
+  };
+
+  const isFileReady = (status) => {
+    return status === 'completed' || status === 'indexed';
+  };
+
+  // ✅ Updated WebSocket handler with streaming state
   const handleWebSocketMessage = useCallback((data) => {
     const { type } = data;
     
-    if (type === 'answer') {
+    console.log('📩 WebSocket message received:', type);
+    
+    if (type === 'answer_chunk') {
+      const { chunk, chunk_index, is_last } = data;
+      
+      console.log(`📝 Chunk ${chunk_index}:`, chunk.substring(0, 50) + '...');
+      console.log(`   is_last: ${is_last}`);
+      
+      // ✅ Set streaming state to true
+      setIsStreaming(true);
+      
+      // Append chunk to current assistant message
+      setMessages(prev => {
+        const lastMessage = prev[prev.length - 1];
+        if (lastMessage && lastMessage.role === 'assistant') {
+          // Update existing assistant message
+          const updated = [...prev];
+          updated[updated.length - 1] = {
+            ...lastMessage,
+            content: lastMessage.content + chunk
+          };
+          return updated;
+        } else {
+          // Create new assistant message
+          return [...prev, { role: 'assistant', content: chunk }];
+        }
+      });
+      
+      if (is_last) {
+        setLoading(false);
+        setIsStreaming(false); // ✅ Streaming complete
+        console.log('✅ Stream completed');
+      }
+    } else if (type === 'answer') {
       const { conversation_id, answer } = data;
       if (conversation_id === currentConversation?.id) {
         setLoading(false);
+        setIsStreaming(false);
         setMessages(prev => [...prev, { role: 'assistant', content: answer }]);
       }
     } else if (type === 'ack') {
-      console.log('Message acknowledged');
+      console.log('✅ Acknowledgement:', data.message);
+      if (data.conversation_id) {
+        console.log(`   Conversation ${data.conversation_id} registered`);
+      }
+      if (data.dialogue_id) {
+        console.log(`   Dialogue ID: ${data.dialogue_id}`);
+      }
     } else if (type === 'error') {
-      console.error('Server error:', data.error);
+      console.error('❌ Server error:', data.error);
       setLoading(false);
+      setIsStreaming(false);
       setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${data.error}` }]);
     }
   }, [currentConversation?.id]);
@@ -66,8 +126,12 @@ function App() {
     };
     
     ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      handleWebSocketMessage(data);
+      try {
+        const data = JSON.parse(event.data);
+        handleWebSocketMessage(data);
+      } catch (error) {
+        console.error('Failed to parse WebSocket message:', error);
+      }
     };
     
     ws.onerror = (error) => {
@@ -142,8 +206,23 @@ function App() {
     if (user) {
       loadConversations();
       loadUploadedFiles();
+      
+      const interval = setInterval(() => {
+        loadUploadedFiles();
+      }, 15000);
+      
+      return () => clearInterval(interval);
     }
   }, [user, loadConversations, loadUploadedFiles]);
+
+  useEffect(() => {
+    if (uploadStatus) {
+      const timer = setTimeout(() => {
+        setUploadStatus(null);
+      }, 8000);
+      return () => clearTimeout(timer);
+    }
+  }, [uploadStatus]);
 
   const handleLogin = (userKey) => {
     const selectedUser = USERS[userKey];
@@ -174,7 +253,6 @@ function App() {
       setCurrentConversation({ id: newConversation.conversation_id });
       setMessages([]);
       setSelectedFiles([]);
-      // No automatic file selector popup - user must click "Docs" button
       setCurrentView('chat');
       await loadConversations();
     } catch (error) {
@@ -213,6 +291,14 @@ function App() {
     setShowFileSelector(false);
 
     const fileIds = selectedFiles.map(f => f.id);
+    
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'register_conversation',
+        conversation_id: currentConversation.id
+      }));
+    }
+    
     sendWebSocketMessage(currentConversation.id, userMessage, fileIds);
   };
 
@@ -235,6 +321,8 @@ function App() {
     if (!file) return;
     
     setUploading(true);
+    setUploadStatus({ type: 'uploading', message: `Uploading "${file.name}"...` });
+    
     const formData = new FormData();
     formData.append('file', file);
     formData.append('user_id', user.id);
@@ -244,11 +332,19 @@ function App() {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       
-      alert(`File "${response.data.name}" uploaded successfully!`);
+      setUploadStatus({ 
+        type: 'uploaded', 
+        message: `✅ "${response.data.name}" uploaded successfully! Waiting for indexing...`,
+        fileName: response.data.name
+      });
+      
       await loadUploadedFiles();
     } catch (error) {
       console.error('Error uploading file:', error);
-      alert('Error uploading file. Please try again.');
+      setUploadStatus({ 
+        type: 'error', 
+        message: `❌ Error uploading file: ${error.response?.data?.detail || error.message}`
+      });
     } finally {
       setUploading(false);
       event.target.value = '';
@@ -259,7 +355,10 @@ function App() {
     if (window.confirm(`Are you sure you want to delete "${fileName}"?`)) {
       try {
         await axios.delete(`${API_BASE_URL}/documents/${fileId}`);
-        alert(`File "${fileName}" deleted successfully!`);
+        setUploadStatus({ 
+          type: 'deleted', 
+          message: `🗑️ "${fileName}" deleted successfully!`
+        });
         await loadUploadedFiles();
         setSelectedFiles(prev => prev.filter(f => f.id !== fileId));
       } catch (error) {
@@ -378,6 +477,15 @@ function App() {
                   </div>
                 )}
 
+                {uploadStatus && (
+                  <div className={`upload-status ${uploadStatus.type}`}>
+                    <span>{uploadStatus.message}</span>
+                    {uploadStatus.type === 'uploaded' && (
+                      <span className="status-sub-text">⏳ This may take a few moments...</span>
+                    )}
+                  </div>
+                )}
+
                 <div className="supported-formats">
                   <small>Supported: PDF, DOCX, DOC, TXT, MD</small>
                 </div>
@@ -385,26 +493,34 @@ function App() {
                 {uploadedFiles.length > 0 && (
                   <div className="file-grid">
                     <h4>Your Documents ({uploadedFiles.length})</h4>
-                    {uploadedFiles.map(file => (
-                      <div key={file.id} className="file-card">
-                        <span className="file-icon">{getFileIcon(file.name)}</span>
-                        <div className="file-info">
-                          <div className="file-name" title={file.name}>
-                            {file.name.length > 30 ? file.name.substring(0, 30) + '...' : file.name}
+                    {uploadedFiles.map(file => {
+                      const status = getStatusBadge(file.status || 'pending');
+                      return (
+                        <div key={file.id} className="file-card">
+                          <span className="file-icon">{getFileIcon(file.name)}</span>
+                          <div className="file-info">
+                            <div className="file-name" title={file.name}>
+                              {file.name.length > 30 ? file.name.substring(0, 30) + '...' : file.name}
+                            </div>
+                            <div className="file-status">
+                              <span className="status-badge" style={{ backgroundColor: status.color }}>
+                                {status.icon} {status.text}
+                              </span>
+                            </div>
+                            <div className="file-date">
+                              {new Date(file.created_at).toLocaleDateString()}
+                            </div>
                           </div>
-                          <div className="file-date">
-                            {new Date(file.created_at).toLocaleDateString()}
-                          </div>
+                          <button 
+                            className="delete-file" 
+                            onClick={() => deleteFile(file.id, file.name)}
+                            title="Delete"
+                          >
+                            ✕
+                          </button>
                         </div>
-                        <button 
-                          className="delete-file" 
-                          onClick={() => deleteFile(file.id, file.name)}
-                          title="Delete"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -455,17 +571,25 @@ function App() {
                     ) : (
                       <>
                         <div className="file-list">
-                          {uploadedFiles.map(file => (
-                            <label key={file.id} className="file-item">
-                              <input
-                                type="checkbox"
-                                checked={selectedFiles.some(f => f.id === file.id)}
-                                onChange={() => toggleFileSelection(file)}
-                              />
-                              <span className="file-icon">{getFileIcon(file.name)}</span>
-                              <span className="file-name">{file.name}</span>
-                            </label>
-                          ))}
+                          {uploadedFiles.map(file => {
+                            const status = getStatusBadge(file.status || 'pending');
+                            const ready = isFileReady(file.status);
+                            return (
+                              <label key={file.id} className="file-item">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedFiles.some(f => f.id === file.id)}
+                                  onChange={() => toggleFileSelection(file)}
+                                  disabled={!ready}
+                                />
+                                <span className="file-icon">{getFileIcon(file.name)}</span>
+                                <span className="file-name">{file.name}</span>
+                                <span className="file-status-badge" style={{ backgroundColor: status.color }}>
+                                  {status.icon} {status.text}
+                                </span>
+                              </label>
+                            );
+                          })}
                         </div>
                         <div className="file-modal-footer">
                           <span className="selected-info">
@@ -509,7 +633,8 @@ function App() {
                   ))}
                 </>
               )}
-              {loading && (
+              {/* ✅ Only show loading if NOT streaming */}
+              {loading && !isStreaming && (
                 <div className="message assistant">
                   <div className="message-avatar">🤖</div>
                   <div className="message-text typing">Thinking...</div>

@@ -14,7 +14,7 @@ from src.registry import register_handlers, get_consumption_topics, get_event_ty
 from common.events.document_uploaded import DocumentUploadedEvent #type: ignore
 from common.events.prompt_answer_requested import PromptAnswerRequestedEvent #type: ignore
 from src.handlers.document_uploaded_handler import DocumentUploadedHandler
-from src.handlers.prompt_answer_requested_handler import PromptAnswerRequestedHandler
+from src.handlers.prompt_requested_handler import PromptAnswerRequestedHandler
 
 
 
@@ -86,7 +86,13 @@ async def publish_event(event):
     try:
         prod = get_producer()
         
-        event_data = json.dumps(event.model_dump(), default=str).encode('utf-8')
+        # ✅ Check if event has model_dump method
+        if hasattr(event, 'model_dump'):
+            event_data = json.dumps(event.model_dump(), default=str).encode('utf-8')
+        elif hasattr(event, 'to_dict'):
+            event_data = json.dumps(event.to_dict(), default=str).encode('utf-8')
+        else:
+            event_data = json.dumps(event.__dict__, default=str).encode('utf-8')
         
         # Get event_type as string
         if hasattr(event, 'event_type'):
@@ -115,7 +121,7 @@ async def publish_event(event):
             callback=make_delivery_report(event_type, topic)
         )
         
-        # ✅ Flush to ensure callback executes before next event
+        # Flush to ensure callback executes before next event
         prod.flush()
         
     except Exception as exc:
@@ -143,8 +149,15 @@ async def handle_message(message: dict):
         
         result = await bus.dispatch(event, db=None)
         
-        if result:
-            await publish_event(result)
+        # ✅ Handle async generators properly
+        if result is not None:
+            if hasattr(result, '__aiter__') and hasattr(result, '__anext__'):
+                # It's an async generator - iterate over it
+                async for result_event in result:
+                    await publish_event(result_event)
+            else:
+                # Single event
+                await publish_event(result)
             
     except Exception as exc:
         print(f"[llm-service] ❌ Error processing message: {exc}", flush=True)

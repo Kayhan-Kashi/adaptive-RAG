@@ -31,7 +31,7 @@ class ConnectionManager:
         logger.info(f"📝 Conversation {conversation_id[:8]}... registered to user {user_id}")
     
     async def send_answer(self, conversation_id: str, answer: str) -> bool:
-        """Send answer to user based on conversation routing"""
+        """Send final answer to user based on conversation routing"""
         user_id = self.conversation_routing.get(conversation_id)
         
         if not user_id:
@@ -49,11 +49,60 @@ class ConnectionManager:
                 "answer": answer, 
                 "timestamp": datetime.utcnow().isoformat()
             })
-            logger.info(f"📤 Answer sent to user {user_id} for conversation {conversation_id[:8]}...")
+            logger.info(f"📤 Final answer sent to user {user_id} for conversation {conversation_id[:8]}...")
             logger.debug(f"   Answer length: {len(answer)} characters")
             return True
         except Exception as e:
             logger.error(f"Failed to send answer to user {user_id}: {e}")
+            return False
+    
+    async def send_chunk(
+        self, 
+        conversation_id: str, 
+        chunk: str, 
+        chunk_index: int, 
+        is_last: bool
+    ) -> bool:
+        """
+        Send a chunk to user based on conversation routing
+        
+        Args:
+            conversation_id: Conversation ID
+            chunk: Text chunk
+            chunk_index: Index of the chunk
+            is_last: Whether this is the last chunk
+        
+        Returns:
+            True if sent successfully, False otherwise
+        """
+        user_id = self.conversation_routing.get(conversation_id)
+        
+        if not user_id:
+            logger.warning(f"❌ No user found for conversation {conversation_id[:8]}...")
+            return False
+        
+        if user_id not in self.active_connections:
+            logger.warning(f"❌ User {user_id} not connected")
+            return False
+        
+        try:
+            await self.active_connections[user_id].send_json({
+                "type": "answer_chunk",
+                "conversation_id": conversation_id,
+                "chunk": chunk,
+                "chunk_index": chunk_index,
+                "is_last": is_last,
+                "timestamp": datetime.utcnow().isoformat()
+            })
+            
+            if is_last:
+                logger.info(f"📤 Final chunk sent to user {user_id} for conversation {conversation_id[:8]}...")
+            else:
+                logger.debug(f"📤 Chunk {chunk_index} sent to user {user_id} for conversation {conversation_id[:8]}...")
+            
+            return True
+        except Exception as e:
+            logger.error(f"Failed to send chunk to user {user_id}: {e}")
             return False
     
     async def send_error(self, conversation_id: str, error: str) -> bool:

@@ -5,6 +5,7 @@ from starlette import status
 from typing import List, Optional
 
 from api.schemas.document_schemas import (
+    DocumentStatusResponse,
     UploadDocumentResponse, 
     DocumentResponse, 
     DocumentListResponse, 
@@ -39,7 +40,8 @@ async def upload_document(
         name=document.name,
         category=document.category,
         created_at=document.created_at,
-        message="Document uploaded successfully"
+        message="Document uploaded successfully",
+        status=document.status
     )
 
 
@@ -65,7 +67,8 @@ async def get_all_documents(
                 name=doc.name,
                 category=doc.category,
                 path=doc.path,
-                created_at=doc.created_at
+                created_at=doc.created_at,
+                status=doc.status
             )
             for doc in documents
         ]
@@ -89,7 +92,8 @@ async def get_document(
         name=document.name,
         category=document.category,
         path=document.path,
-        created_at=document.created_at
+        created_at=document.created_at,
+        status=document.status
     )
 
 
@@ -108,6 +112,27 @@ async def delete_document(
         message=result["message"],
         document_id=result["document_id"]
     )
+    
+@router.get("/{document_id}/status", response_model=DocumentStatusResponse)
+async def get_document_status(
+    document_id: str,
+    db: Session = Depends(get_session),
+    service: DocumentService = Injected(DocumentService),
+):
+    """Get document status"""
+    document = service.get_document_by_id(
+        session=db,
+        document_id=document_id
+    )
+    
+    return DocumentStatusResponse(
+        id=document.id,
+        name=document.name,
+        status=document.status,
+        error_message=document.error_message,
+        indexed_at=document.indexed_at,
+        created_at=document.created_at
+    )
 
 
 @router.get("/stats/summary", response_model=DocumentStatsResponse)
@@ -121,3 +146,5 @@ async def get_document_stats(
         total_documents=stats["total_documents"],
         by_category=stats["by_category"]
     )
+    
+    

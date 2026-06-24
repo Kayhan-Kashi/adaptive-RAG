@@ -40,7 +40,7 @@ async def lifespan(app: FastAPI):
     chat_consumer = ChatConsumer(
         bootstrap_servers=bootstrap_servers,
         group_id="elearning-chat-group",
-        topic="prompt-answer-completed"
+        topic="prompt-answer-chunk-streamed"
     )
     chat_consumer.start()
     

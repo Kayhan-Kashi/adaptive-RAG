@@ -4,7 +4,7 @@ import os
 from injector import Binder, Module, SingletonScope, Injector
 from common.kafka.producer import KafkaProducer, get_producer #type: ignore
 from common.events import PromptAnswerRequestedEvent, DocumentUploadedEvent #type: ignore
-from src.services.llm_service import LLMService
+from src.services.llm_service_stream import LLMService
 from src.core.embedding_model import EmbeddingModel
 from src.core.document_loader import DocumentLoader
 from src.core.text_chunker import TextChunker
@@ -14,7 +14,7 @@ from src.services.rag_service import RagService
 from src.services.ingestion_service import IngestionService
 from src.services.retrieval_service import RetrievalService
 from src.handlers.document_uploaded_handler import DocumentUploadedHandler
-from src.handlers.prompt_answer_requested_handler import PromptAnswerRequestedHandler
+from src.handlers.prompt_requested_handler import PromptAnswerRequestedHandler
 
 
 def get_kafka_producer() -> KafkaProducer:

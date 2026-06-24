@@ -4,9 +4,10 @@ import logging
 
 from injector import Binder, Module, SingletonScope, Injector
 from common.kafka.producer import KafkaProducer, get_producer #type: ignore
-from common.events import DocumentEmbeddingDoneEvent, PromptAnswerCompletedEvent #type: ignore
+from common.events import DocumentEmbeddingDoneEvent, PromptAnswerCompletedEvent, PromptAnswerChunkStreamed #type: ignore
 from handlers.document_embedding_done_handler import DocumentEmbeddingDoneHandler
 from handlers.prompt_answer_completed_handler import PromptAnswerCompletedHandler
+from handlers.prompt_answer_chunk_streamed_handler import PromptAnswerChunkStreamedHandler
 from services.conversation_service import ConversationService
 from services.document_service import DocumentService
 
@@ -22,6 +23,7 @@ def get_kafka_producer() -> KafkaProducer:
 EVENT_HANDLER_MAP = {
     DocumentEmbeddingDoneEvent: DocumentEmbeddingDoneHandler,
     PromptAnswerCompletedEvent: PromptAnswerCompletedHandler,
+    # PromptAnswerChunkStreamed: PromptAnswerChunkStreamedHandler
 }
 
 
@@ -35,6 +37,8 @@ class DependencyInjection(Module):
         
         binder.bind(DocumentEmbeddingDoneHandler, scope=SingletonScope)
         binder.bind(PromptAnswerCompletedHandler, scope=SingletonScope)
+        binder.bind(PromptAnswerChunkStreamedHandler, scope=SingletonScope)
+
 
 
 injector = Injector([DependencyInjection()])

@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from datetime import datetime
-from typing import List, Dict
+from typing import List, Dict, Optional
 from uuid import UUID
 
 
@@ -11,6 +11,8 @@ class UploadDocumentResponse(BaseModel):
     category: str
     created_at: datetime
     message: str
+    status: str 
+
     
     class Config:
         from_attributes = True
@@ -23,6 +25,8 @@ class DocumentResponse(BaseModel):
     category: str
     path: str
     created_at: datetime
+    status: str 
+
     
     class Config:
         from_attributes = True
@@ -47,3 +51,12 @@ class DocumentStatsResponse(BaseModel):
     """Response model for document statistics"""
     total_documents: int
     by_category: Dict[str, int]
+    
+    
+class DocumentStatusResponse(BaseModel):
+    id: str
+    name: str
+    status: str 
+    error_message: Optional[str] = None
+    indexed_at: Optional[datetime] = None
+    created_at: datetime

@@ -131,7 +131,9 @@ class ConversationService:
             dialogue = Dialogue(
                 conversation_id=uuid.UUID(conversation_id),
                 prompt=prompt,
-                answer=answer if answer else ""
+                answer=answer if answer else "",
+                is_complete=False,
+                chunk_count=0
             )
             session.add(dialogue)
             session.commit()
@@ -220,6 +222,63 @@ class ConversationService:
             logger.error(f"❌ Failed to publish Kafka event for dialogue {dialogue.id}: {str(e)}")
             logger.exception("Kafka publishing error details:")
     
+    def append_dialogue_chunk(
+        self,
+        session: Session,
+        dialogue_id: str,
+        chunk: str,
+        chunk_index: int,
+        is_last: bool = False
+    ) -> Optional[Dialogue]:
+        """
+        Append a chunk to the dialogue answer.
+        
+        Args:
+            session: Database session
+            dialogue_id: Dialogue ID
+            chunk: Text chunk to append
+            chunk_index: Index of the chunk
+            is_last: Whether this is the last chunk
+        
+        Returns:
+            Updated Dialogue or None if not found
+        """
+        try:
+            dialogue = session.get(Dialogue, uuid.UUID(dialogue_id))
+            if not dialogue:
+                logger.warning(f"⚠️ Dialogue not found: {dialogue_id}")
+                return None
+            
+            # Append chunk to existing answer (or start new)
+            if dialogue.answer is None:
+                dialogue.answer = chunk
+            else:
+                dialogue.answer += chunk
+            
+            dialogue.updated_at = datetime.utcnow()
+            dialogue.chunk_count = chunk_index + 1
+            
+            if is_last:
+                dialogue.is_complete = True
+                dialogue.completed_at = datetime.utcnow()
+                logger.info(f"✅ Dialogue {dialogue_id} completed with {dialogue.chunk_count} chunks")
+            else:
+                logger.info(f"✅ Dialogue {dialogue_id} chunk {chunk_index} appended")
+            
+            session.add(dialogue)
+            session.commit()
+            session.refresh(dialogue)
+            
+            return dialogue
+            
+        except ValueError:
+            logger.error(f"❌ Invalid UUID format for dialogue_id: {dialogue_id}")
+            return None
+        except Exception as e:
+            session.rollback()
+            logger.error(f"❌ Error appending chunk: {e}")
+            return None
+    
     def get_conversation(self, session: Session, conversation_id: str):
         """Get a conversation by ID with all dialogues"""
         try:
@@ -246,8 +305,11 @@ class ConversationService:
                         "id": d.id,
                         "prompt": d.prompt,
                         "answer": d.answer,
+                        "chunk_count": d.chunk_count,
+                        "is_complete": d.is_complete,
                         "created_at": d.created_at,
-                        "updated_at": d.updated_at
+                        "updated_at": d.updated_at,
+                        "completed_at": d.completed_at
                     } for d in dialogues
                 ]
             }
@@ -293,6 +355,8 @@ class ConversationService:
             
             dialogue.answer = answer
             dialogue.updated_at = datetime.utcnow()
+            dialogue.is_complete = True
+            dialogue.completed_at = datetime.utcnow()
             session.commit()
             session.refresh(dialogue)
             
@@ -350,8 +414,11 @@ class ConversationService:
                     "id": d.id,
                     "prompt": d.prompt,
                     "answer": d.answer,
+                    "chunk_count": d.chunk_count,
+                    "is_complete": d.is_complete,
                     "created_at": d.created_at,
-                    "updated_at": d.updated_at
+                    "updated_at": d.updated_at,
+                    "completed_at": d.completed_at
                 } for d in dialogues
             ]
         except ValueError:
@@ -373,9 +440,43 @@ class ConversationService:
                 "conversation_id": dialogue.conversation_id,
                 "prompt": dialogue.prompt,
                 "answer": dialogue.answer,
+                "chunk_count": dialogue.chunk_count,
+                "is_complete": dialogue.is_complete,
                 "created_at": dialogue.created_at,
-                "updated_at": dialogue.updated_at
+                "updated_at": dialogue.updated_at,
+                "completed_at": dialogue.completed_at
             }
         except ValueError:
             logger.error(f"❌ Invalid UUID format for dialogue_id: {dialogue_id}")
             raise HTTPException(status_code=400, detail="Invalid UUID format for dialogue_id")
+    
+    def get_conversation_summary(self, session: Session, conversation_id: str):
+        """Get a summary of a conversation"""
+        try:
+            conversation = session.get(Conversation, uuid.UUID(conversation_id))
+            if not conversation:
+                logger.warning(f"⚠️ Conversation not found: {conversation_id}")
+                raise HTTPException(status_code=404, detail="Conversation not found")
+            
+            dialogues = session.exec(
+                select(Dialogue)
+                .where(Dialogue.conversation_id == uuid.UUID(conversation_id))
+                .order_by(Dialogue.created_at)
+            ).all()
+            
+            total_chunks = sum(d.chunk_count or 0 for d in dialogues)
+            completed_dialogues = sum(1 for d in dialogues if d.is_complete)
+            
+            return {
+                "id": conversation.id,
+                "user_id": conversation.user_id,
+                "created_at": conversation.created_at,
+                "updated_at": conversation.updated_at,
+                "total_dialogues": len(dialogues),
+                "completed_dialogues": completed_dialogues,
+                "total_chunks": total_chunks,
+                "last_activity": dialogues[-1].updated_at if dialogues else conversation.created_at
+            }
+        except ValueError:
+            logger.error(f"❌ Invalid UUID format for conversation_id: {conversation_id}")
+            raise HTTPException(status_code=400, detail="Invalid UUID format for conversation_id")

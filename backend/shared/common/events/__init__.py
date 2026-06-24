@@ -3,6 +3,7 @@ from .prompt_answer_requested import PromptAnswerRequestedEvent
 from .prompt_answer_completed import PromptAnswerCompletedEvent
 from .document_uploaded import DocumentUploadedEvent
 from .document_embedding_done import DocumentEmbeddingDoneEvent
+from .prompt_answer_chunk_streamed import PromptAnswerChunkStreamed
 
 
 __all__ = [
@@ -10,5 +11,6 @@ __all__ = [
     "PromptAnswerRequestedEvent",
     "PromptAnswerCompletedEvent",
     "DocumentUploadedEvent",
-    "DocumentEmbeddingDoneEvent"
+    "DocumentEmbeddingDoneEvent",
+    "PromptAnswerChunkStreamed"
 ]

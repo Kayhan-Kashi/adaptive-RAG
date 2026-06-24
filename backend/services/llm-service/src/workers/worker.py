@@ -1,4 +1,3 @@
-# llm-service/src/workers/worker.py
 import asyncio
 import json
 import sys

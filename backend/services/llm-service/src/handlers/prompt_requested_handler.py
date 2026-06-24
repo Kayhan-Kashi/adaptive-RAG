@@ -5,7 +5,7 @@ from injector import inject
 from common.events import PromptAnswerRequestedEvent #type: ignore
 from common.events.prompt_answer_chunk_streamed import PromptAnswerChunkStreamed #type: ignore
 from common.events.prompt_answer_completed import PromptAnswerCompletedEvent #type: ignore
-from src.services.llm_service_stream import LLMService
+from src.services.llm_service import LLMService
 
 logger = logging.getLogger(__name__)
 

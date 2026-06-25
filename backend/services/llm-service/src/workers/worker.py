@@ -219,7 +219,7 @@ async def main():
                 continue
             
             if msg.error():
-                if msg.error().code() == KafkaError._UNKNOWN_TOPIC_OR_PART:
+                if msg.error().code() == KafkaError.UNKNOWN_TOPIC_OR_PART:
                     print(f"[llm-service] ⚠️ Topic not available yet, waiting 3s...", flush=True)
                     await asyncio.sleep(3)
                     continue

@@ -6,8 +6,8 @@ import './App.css';
 const USER1_ID = '12345678-1234-5678-1234-567812345678';
 const USER2_ID = '87654321-4321-8765-4321-876543210987';
 
-const API_BASE_URL = 'http://localhost:8000';
-const WS_BASE_URL = 'ws://localhost:8000';
+const API_BASE_URL = 'http://localhost:8001';
+const WS_BASE_URL = 'ws://localhost:8001';
 
 const USERS = {
   'User1': { id: USER1_ID, username: 'user1', name: 'User 1', avatar: '👤' },

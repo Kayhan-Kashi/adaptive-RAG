@@ -27,6 +27,7 @@
 - [Project Structure](#project-structure)
 - [Quick Start](#quick-start)
 - [Environment Variables](#environment-variables)
+- [HyDE Configuration](#hyde-configuration)
 - [API Endpoints](#api-endpoints)
 - [WebSocket Streaming](#websocket-streaming)
 - [FastAPI Backend](#fastapi-backend)
@@ -66,6 +67,7 @@ A production-grade, event-driven **RAG (Retrieval-Augmented Generation)** system
 ### 3. HyDE (Hypothetical Document Embeddings)
 - **Query Transformation** - Generates hypothetical documents for better retrieval
 - **Improved Semantic Matching** - Bridges vocabulary gap between queries and documents
+- **Disabled by default** - Enable only when needed (see [HyDE Configuration](#hyde-configuration))
 
 ### 4. Local Models (Privacy First)
 - **OLLAMA** - Run Gemma3, Llama3, Mistral locally
@@ -143,10 +145,11 @@ A production-grade, event-driven **RAG (Retrieval-Augmented Generation)** system
 
 ## 🔧 Hybrid Retrieval Pipeline
 
-### Stage 1: HyDE (Query Transformation)
+### Stage 1: HyDE (Query Transformation) - Optional
 - **HyDE** generates a hypothetical document from the user query
 - Transforms the query into a document-like format for better retrieval
 - Improves semantic matching with documents
+- **Disabled by default** - Enable via `USE_HYDE=True`
 
 ### Stage 2: FAISS + MMR (Dense Retrieval with Diversity)
 - **FAISS** for fast similarity search on dense embeddings
@@ -243,43 +246,176 @@ advanced-rag/
 
 ### Prerequisites
 - Docker & Docker Compose
+- [OLLAMA](https://ollama.com/) installed locally
 - Make sure ports 8000, 3000, 9092, 9000 are available
 
-### 1. Clone the Repository
+### 1. Install OLLAMA
+
+Download and install OLLAMA from [https://ollama.com/](https://ollama.com/)
+
+### 2. Download a Model
+
+```bash
+# Download Gemma3 model (recommended)
+ollama pull gemma3:12b
+
+# Or download Llama3
+ollama pull llama3:8b
+
+# Or download Mistral
+ollama pull mistral
+```
+
+### 3. Start OLLAMA Service
+
+```bash
+# Start OLLAMA server (it runs on port 11434 by default)
+ollama serve
+```
+
+### 4. Clone the Repository
 
 ```bash
 git clone https://github.com/yourusername/advanced-rag.git
 cd advanced-rag
 ```
 
-### 2. Environment Configuration
+### 5. Environment Configuration
 
 ```bash
 cp .env.example .env
 # Edit .env with your configuration
 ```
 
-### 3. Start All Services
+### 6. Start All Services
 
 ```bash
 docker-compose up -d
 ```
 
-### 4. Pull Models
-
-```bash
-# Pull OLLAMA models
-docker-compose exec llm-service ollama pull gemma3:12b
-
-# Or pull Llama3
-docker-compose exec llm-service ollama pull llama3:8b
-```
-
-### 5. Access the Application
+### 7. Access the Application
 
 - **Frontend**: http://localhost:3000
 - **Chat Service API**: http://localhost:8000/docs
 - **Kafka UI**: http://localhost:9000
+
+---
+
+## 📊 Environment Variables
+
+### LLM Service Configuration
+
+```yaml
+rag-llm-service:
+  environment:
+    # Kafka Configuration
+    - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+    - CONSUMER_GROUP=llm-worker-group
+    
+    # OLLAMA LLM Configuration
+    - OLLAMA_MODEL=gemma3:12b          # Model: gemma3:12b, llama3:8b, mistral
+    - OLLAMA_BASE_URL=http://host.docker.internal:11434
+    - OLLAMA_TEMPERATURE=0.3            # Lower = more deterministic
+    
+    # Embedding Model
+    - MODEL_PATH=/app/models/snapshot/jina-embeddings-v3
+    
+    # HuggingFace Configuration
+    - HF_HUB_OFFLINE=0                  # 0=online, 1=offline
+    - HF_HUB_ENABLE_OFFLINE=0
+    - TRANSFORMERS_OFFLINE=0
+    - HF_HUB_DISABLE_SYMLINKS_WARNING=1
+    - HF_HOME=/app/models/hf_cache
+    
+    # ⭐ HyDE (Hypothetical Document Embeddings)
+    - USE_HYDE=False                    # False=disabled (default), True=enabled
+```
+
+---
+
+## 🧠 HyDE Configuration
+
+### What is HyDE?
+
+**HyDE (Hypothetical Document Embeddings)** is a query transformation technique that:
+1. Takes the user's question
+2. Asks the LLM to generate a hypothetical document that would contain the answer
+3. Uses this hypothetical document for semantic search instead of the original query
+4. Improves retrieval quality by bridging the vocabulary gap between queries and documents
+
+### How HyDE Works
+
+```
+User Query: "What is RAG?"
+     │
+     ▼
+[LLM Call 1] Generate hypothetical document
+     │
+     ▼
+"Retrieval Augmented Generation (RAG) is a technique that combines 
+retrieval systems with large language models to generate more accurate 
+and contextually relevant responses..."
+     │
+     ▼
+Use hypothetical document for retrieval (instead of original query)
+     │
+     ▼
+FAISS + BM25 + Reranker search using the hypothetical document
+     │
+     ▼
+Return relevant chunks
+     │
+     ▼
+[LLM Call 2] Generate final answer using original query + chunks
+```
+
+### Enabling HyDE
+
+To enable HyDE, update the environment variable in `docker-compose.yml`:
+
+```yaml
+environment:
+  - USE_HYDE=True  # ✅ HyDE is ENABLED
+```
+
+Then restart the service:
+
+```bash
+docker-compose up -d rag-llm-service
+```
+
+### When to Enable HyDE
+
+| Scenario | Recommendation |
+|----------|----------------|
+| **Short queries** (1-3 words) | ✅ Enable HyDE for better context |
+| **Ambiguous queries** | ✅ Enable HyDE for clarity |
+| **Technical/domain-specific questions** | ✅ Enable HyDE for better matching |
+| **Long, well-formed questions** | ❌ Disable HyDE (faster, no benefit) |
+| **Low latency requirements** | ❌ Disable HyDE (adds one extra LLM call) |
+| **Simple, direct questions** | ❌ Disable HyDE (no benefit) |
+
+### Performance Impact
+
+| Metric | HyDE Disabled | HyDE Enabled |
+|--------|---------------|--------------|
+| **LLM Calls** | 1 call | 2 calls |
+| **Latency** | Faster | ~2-3x slower |
+| **Retrieval Quality** | Good | Better for short/ambiguous queries |
+| **Token Usage** | Lower | Higher |
+
+### Quick Commands
+
+```bash
+# Check current HyDE status
+docker-compose exec llm-service env | grep USE_HYDE
+
+# Enable HyDE (restart service)
+docker-compose up -d rag-llm-service
+
+# Disable HyDE (restart service)
+docker-compose up -d rag-llm-service
+```
 
 ---
 
@@ -290,6 +426,7 @@ docker-compose exec llm-service ollama pull llama3:8b
 User → Frontend → Gateway (Producer) 
                 → Kafka Topic: "prompt-requested"
                 → LLM Service (Consumer)
+                → [Optional: HyDE Query Transformation]
                 → Hybrid Retrieval Pipeline
                 → Kafka Topic: "prompt-answer-chunk-streamed"
                 → WebSocket → Frontend (Real-time streaming)
@@ -487,3 +624,8 @@ If you find this project useful, please give it a star! ⭐
 - [FastAPI](https://fastapi.tiangolo.com/) for the API framework
 
 ---
+
+## 📞 Contact
+
+For questions or support, please open an issue on GitHub.
+

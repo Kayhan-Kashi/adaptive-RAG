@@ -1,6 +1,3 @@
-Here's the updated README with the corrected title and models folder structure:
-
-```markdown
 # ⚡ Advanced Event-Driven RAG System
 
 **Event-Driven RAG System Hybrid Retrieval (FAISS + MMR + BM25 + BGE Reranker + HyDE) using Event-Driven Architecture (Microservices with Kafka Message Broker) running on Local Models (OLLAMA)**

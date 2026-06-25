@@ -1,6 +1,6 @@
 # ⚡ Advanced Event-Driven RAG System
 
-**An Event-Driven RAG System with Hybrid Retrieval (FAISS + MMR + BM25 + BGE Reranker + HyDE) using Event-Driven Architecture (Microservices with Kafka Message Broker) running on Local Models (OLLAMA)**
+**An Event-Driven RAG System with Hybrid Retrieval (FAISS + MMR + BM25 + BGE Reranker + HyDE) using Event-Driven Architecture (Microservices with Kafka Message Broker) running on Local LLM Models (OLLAMA)**
 
 [![Python](https://img.shields.io/badge/Python-3.11-blue)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104-green)](https://fastapi.tiangolo.com/)
@@ -47,7 +47,7 @@ A production-grade, event-driven **RAG (Retrieval-Augmented Generation)** system
 - 🎯 **Hybrid Retrieval** using dense + sparse search with diversity
 - 🎯 **Precision Reranking** using cross-encoder for final relevance scoring
 - 🧠 **HyDE** (Hypothetical Document Embeddings) for query transformation
-- 🤖 **Local Models** via OLLAMA - 100% privacy-first, zero cloud costs
+- 🤖 **Local LLM Models** via OLLAMA - 100% privacy-first, zero cloud costs
 
 ---
 
@@ -627,5 +627,5 @@ If you find this project useful, please give it a star! ⭐
 
 ## 📞 Contact
 
-For questions or support, please open an issue on GitHub.
+For questions or support, please open an issue on GitHub or email kayhan.kashi@gmail.com
 

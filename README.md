@@ -1,6 +1,6 @@
-# ⚡ Advanced Event-Driven RAG System with Hybrid Retrieval and Local Models
+# ⚡ Advanced Event-Driven RAG System with Hybrid Retrieval and Local LLM Models
 
-**An Advanced Event-Driven RAG System with Hybrid Retrieval (FAISS + MMR + BM25 + BGE Reranker + HyDE) using Event-Driven Architecture (Microservices with Kafka Message Broker) running on Local Models (OLLAMA)**
+**An Advanced Event-Driven RAG System with Hybrid Retrieval (FAISS + MMR + BM25 + BGE Reranker + HyDE) using Event-Driven Architecture (Microservices with Kafka Message Broker) running on Local LLM Models (OLLAMA)**
 
 [![Python](https://img.shields.io/badge/Python-3.11-blue)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104-green)](https://fastapi.tiangolo.com/)

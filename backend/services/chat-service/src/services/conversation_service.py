@@ -305,11 +305,8 @@ class ConversationService:
                         "id": d.id,
                         "prompt": d.prompt,
                         "answer": d.answer,
-                        "chunk_count": d.chunk_count,
-                        "is_complete": d.is_complete,
                         "created_at": d.created_at,
                         "updated_at": d.updated_at,
-                        "completed_at": d.completed_at
                     } for d in dialogues
                 ]
             }

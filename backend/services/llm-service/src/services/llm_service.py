@@ -40,25 +40,47 @@ Hypothetical Document:
         
         # RAG Prompt with history support and source citation
         self.prompt = ChatPromptTemplate.from_template("""
-You are a helpful assistant. Answer the user's question based ONLY on the provided context and previous conversation history.
-If the answer is not in the context or in the conversation history, say that you don't know.
+شما یک دستیار مفید هستید. پاسخ سوال کاربر را صرفاً بر اساس متن ارائه‌شده (context) و تاریخچه‌ی مکالمات قبلی (در صورت وجود) بدهید. اگر در متن سوال کاربر کلمه‌ای به فارسی یا زبان فارسی وجود دارد، لطفاً پاسخ را به فارسی بدهید.
 
-IMPORTANT: When you use information from the context, cite the source using [Filename, Page X] format at the end of each sentence or paragraph that uses that source.
+اگر پاسخ سوال در متن (context) یا تاریخچه‌ی مکالمات موجود نیست، بگویید که نمی‌دانید (یا به فارسی: «من نمی‌دانم») و پاسخ را از خود درنیاورید. منبع پاسخ خود را با استفاده از قالب [نام فایل، صفحه X] در انتهای هر جمله یا پاراگرافی که از متن استفاده می‌کند، ذکر کنید. اگر چندین منبع وجود دارد، همه را ذکر کنید.
 
-Example: "The company reported revenue of $10M in Q4 2024 [Annual_Report.pdf, Page 5]."
+مهم: وقتی از اطلاعات موجود در متن (context) استفاده می‌کنید، منبع را با قالب [ filename, صفحه X] در انتهای هر جمله یا پاراگراف مربوطه ذکر کنید
+
+مثال: "شرکت در سه‌ماهه‌ی چهارم سال ۲۰۲۴ درآمدی معادل ۱۰ میلیون دلار گزارش کرده است که نسبت به مدت مشابه سال قبل ۱۵٪ رشد نشان می‌دهد. 
+این رشد عمدتاً به دلیل افزایش فروش در بازارهای آسیایی بوده است. بازارهای چین و هند به ترتیب ۲۰٪ و ۱۸٪ رشد فروش داشته‌اند. همچنین محصولات جدید معرفی‌شده در این مناطق با استقبال خوبی مواجه شده و سهم بازار شرکت در این مناطق را به ۱۲٪ افزایش داده است. 
+[file1.pdf، صفحه ۵]"
 
 <conversation_history>
 {history}
 </conversation_history>
+<context> {context} </context>
 
-<context>
-{context}
-</context>
+سوال: {input}
 
-Question: {input}
-
-Answer: 
+پاسخ:
 """)
+        
+        
+#         self.prompt = ChatPromptTemplate.from_template("""
+# You are a helpful assistant. Answer the user's question based ONLY on the provided context and previous conversation history (if there is a persian or farsi word in the user prompt, please answer in persian or farsi).
+# If the answer is not in the context or in the conversation history, say that you don't know (or in persian: "من نمی دانم") and do not make up an answer. Cite the sources of your answer using the format [Filename, Page X] at the end of each sentence or paragraph that uses information from the context. If there are multiple sources, cite them all.
+
+# IMPORTANT: When you use information from the context, cite the source using [Filename, Page X] format at the end of each sentence or paragraph that uses that source.
+
+# Example: "The company reported revenue of $10M in Q4 2024 [Annual_Report.pdf, Page 5]."
+
+# <conversation_history>
+# {history}
+# </conversation_history>
+
+# <context>
+# {context}
+# </context>
+
+# Question: {input}
+
+# Answer: 
+# """)
         
         self.use_hyde_default = os.getenv("USE_HYDE", "False").lower() == "true"
         

@@ -699,3 +699,4 @@ docker-compose exec rag-llm-service curl -I https://huggingface.co
 
 ---
 
+**Built with ❤️ by the Adaptive RAG Team**

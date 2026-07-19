@@ -698,5 +698,3 @@ docker-compose exec rag-llm-service curl -I https://huggingface.co
 - [Apache Kafka Documentation](https://kafka.apache.org/documentation/)
 
 ---
-
-**Built with ❤️ by the Adaptive RAG Team**

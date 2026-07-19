@@ -27,7 +27,7 @@ While many resources explain RAG well, most use APIs and are not local, which is
 **This project solves both problems.**
 
 This is a **production-ready, end-to-end RAG chatbot** that:
-- ✅ Runs **100% locally** with OLLAMA
+- ✅ Runs **100% locally** with OLLAMA (Gemma 3 12B)
 - ✅ No external API calls - complete **data privacy**
 - ✅ Full **chatbot experience** with React frontend and WebSocket streaming
 - ✅ **Document upload** support (PDF, DOCX, TXT, Markdown)
@@ -98,110 +98,6 @@ Since all AI models run locally through **OLLAMA** with **Gemma 3 12B**, the ent
 - ✅ **Air-Gap Ready** - Works in isolated environments
 - ✅ **Data Sovereignty** - Complete control over your data
 - ✅ **No Data Leakage** - Documents never leave your infrastructure
-
----
-
-## 🏗️ System Architecture
-
-```mermaid
-graph TB
-    subgraph Frontend["🖥️ Frontend (React + TypeScript)"]
-        UI[User Interface]
-        WS_Client[WebSocket Client]
-        ConfigPanel[RAG Config Panel]
-    end
-    
-    subgraph Gateway["🚪 API Gateway (FastAPI)"]
-        REST[REST API]
-        WS_Server[WebSocket Server]
-        Kafka_Producer[Kafka Producer]
-    end
-    
-    subgraph EventBus["📨 Event Bus (Apache Kafka)"]
-        Topic1[prompt-requested]
-        Topic2[prompt-answer-chunk-streamed]
-        Topic3[prompt-completed]
-        Topic4[document-uploaded]
-        Topic5[document-embedding-done]
-    end
-    
-    subgraph Services["⚡ Microservices"]
-        Chat_Service[💬 Chat Service]
-        LLM_Service[🧠 LLM Service]
-        Ingestion_Service[📄 Ingestion Service]
-    end
-    
-    subgraph Pipeline["🔀 LangGraph RAG Pipeline"]
-        Coref[1. Coreference Resolution]
-        QueryAnalysis[2. Query Analysis]
-        QueryRewrite[3. Query Rewriting]
-        DenseRetrieval[4. Dense Retrieval<br/>FAISS + MMR]
-        QualityEval[5. Quality Evaluation]
-        SparseAttach[6. Sparse Attachment<br/>BM25]
-        HyDE[7. HyDE Generation]
-        Rerank[8. BGE Reranker]
-        Generation[9. OLLAMA Generation<br/>Gemma 3 12B]
-    end
-    
-    subgraph Storage["💾 Storage"]
-        FAISS[(FAISS Index)]
-        BM25[(BM25 Index)]
-        SQLite[(SQLite DB)]
-        Models[(Local Models<br/>Gemma 3 12B)]
-    end
-    
-    UI --> REST
-    UI --> WS_Client
-    ConfigPanel --> WS_Client
-    WS_Client --> WS_Server
-    WS_Server --> Kafka_Producer
-    
-    REST --> Kafka_Producer
-    Kafka_Producer --> Topic1
-    Kafka_Producer --> Topic4
-    
-    Topic1 --> LLM_Service
-    Topic2 --> Chat_Service
-    Topic3 --> Chat_Service
-    Topic4 --> Ingestion_Service
-    Topic5 --> Chat_Service
-    
-    LLM_Service --> Coref
-    Coref --> QueryAnalysis
-    QueryAnalysis --> QueryRewrite
-    QueryRewrite --> DenseRetrieval
-    DenseRetrieval --> QualityEval
-    
-    QualityEval -->|Quality Passed| SparseAttach
-    QualityEval -->|Quality Failed| HyDE
-    HyDE --> DenseRetrieval
-    
-    SparseAttach --> Rerank
-    Rerank --> Generation
-    Generation --> Topic2
-    Generation --> Topic3
-    
-    DenseRetrieval -.-> FAISS
-    SparseAttach -.-> BM25
-    Ingestion_Service --> FAISS
-    Ingestion_Service --> BM25
-    Chat_Service --> SQLite
-    LLM_Service --> Models
-    
-    classDef frontend fill:#4A90D9,color:#fff
-    classDef gateway fill:#50C878,color:#fff
-    classDef eventbus fill:#FF6B6B,color:#fff
-    classDef services fill:#9B59B6,color:#fff
-    classDef pipeline fill:#F39C12,color:#fff
-    classDef storage fill:#2ECC71,color:#fff
-    
-    class UI,WS_Client,ConfigPanel frontend
-    class REST,WS_Server,Kafka_Producer gateway
-    class Topic1,Topic2,Topic3,Topic4,Topic5 eventbus
-    class Chat_Service,LLM_Service,Ingestion_Service services
-    class Coref,QueryAnalysis,QueryRewrite,DenseRetrieval,QualityEval,SparseAttach,HyDE,Rerank,Generation pipeline
-    class FAISS,BM25,SQLite,Models storage
-```
 
 ---
 
@@ -540,13 +436,6 @@ ollama pull gemma3:12b
 ```bash
 docker-compose logs kafka
 docker-compose restart kafka
-```
-
-### WebSocket Connection Failed
-
-```bash
-# Check WebSocket endpoint
-curl -i -N -H "Connection: Upgrade" -H "Upgrade: websocket" http://localhost:8001/ws/test
 ```
 
 ---

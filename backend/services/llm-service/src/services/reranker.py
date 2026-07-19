@@ -1,13 +1,13 @@
 import logging
 import os
 import warnings
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 from injector import inject
 
 logger = logging.getLogger(__name__)
 
 try:
-    from FlagEmbedding import FlagReranker
+    from FlagEmbedding import FlagReranker #type: ignore
     RERANKER_AVAILABLE = True
 except ImportError:
     RERANKER_AVAILABLE = False
@@ -18,6 +18,7 @@ class RerankerModel:
     """
     Handles loading and management of the reranker model.
     Auto-downloads from HuggingFace if not found locally.
+    ALWAYS uses CPU for inference.
     """
     
     @inject
@@ -34,7 +35,9 @@ class RerankerModel:
             "BAAI/bge-reranker-v2-m3"
         )
         
-        self.use_fp16 = os.getenv("RERANKER_USE_FP16", "true").lower() == "true"
+        # ✅ ALWAYS use CPU - FP16 disabled
+        self.use_fp16 = False
+        self.device = "cpu"
         
         self.batch_size = int(os.getenv("RERANKER_BATCH_SIZE", "32"))
         self.max_length = int(os.getenv("RERANKER_MAX_LENGTH", "512"))
@@ -48,6 +51,7 @@ class RerankerModel:
         
         logger.info("✅ RerankerModel initialized")
         logger.info(f"   Available: {self.is_available()}")
+        logger.info(f"   Device: {self.device} (CPU only)")
         logger.info(f"   FP16: {self.use_fp16}")
         logger.info(f"   Batch size: {self.batch_size}")
         logger.info(f"   Max length: {self.max_length}")
@@ -66,13 +70,14 @@ class RerankerModel:
     def _load(self):
         """
         Load reranker model with auto-download if not found.
+        ALWAYS uses CPU.
         """
         if not self._is_available:
             logger.warning("⚠️ FlagEmbedding not available. Reranking disabled.")
             return
         
         logger.info("=" * 70)
-        logger.info("🔄 LOADING RERANKER MODEL")
+        logger.info("🔄 LOADING RERANKER MODEL (CPU)")
         logger.info("=" * 70)
         
         try:
@@ -132,22 +137,23 @@ class RerankerModel:
             logger.info("-" * 70)
             logger.info("📦 Loading FlagReranker with settings:")
             logger.info(f"   Model path: {model_path}")
-            logger.info(f"   FP16: {self.use_fp16}")
-            logger.info(f"   Device: {'cuda' if self.use_fp16 else 'cpu'}")
+            logger.info(f"   FP16: {self.use_fp16} (disabled - CPU mode)")
+            logger.info(f"   Device: {self.device}")
             logger.info("-" * 70)
             logger.info("⏳ Loading model into memory (this may take a moment)...")
             
+            # ✅ Force CPU - always use CPU
             self._reranker = FlagReranker(
                 model_path, 
-                use_fp16=self.use_fp16,
-                device="cuda" if self.use_fp16 else "cpu",
+                use_fp16=False,
+                device="cpu",
             )
             
             logger.info("=" * 70)
-            logger.info(f"✅ Reranker loaded successfully!")
+            logger.info(f"✅ Reranker loaded successfully on CPU!")
             logger.info(f"   Path: {model_path}")
             logger.info(f"   FP16: {self.use_fp16}")
-            logger.info(f"   Device: {'cuda' if self.use_fp16 else 'cpu'}")
+            logger.info(f"   Device: {self.device}")
             logger.info("=" * 70)
                     
         except Exception as e:
@@ -178,7 +184,7 @@ class RerankerModel:
             if isinstance(scores, float):
                 scores = [scores]
             elif not isinstance(scores, list):
-                scores = list(scores)
+                scores = list(scores) #type: ignore
             
             return scores
             
@@ -193,6 +199,7 @@ class RerankerModel:
             "model_path": self.model_path,
             "model_repo_id": self.model_repo_id,
             "use_fp16": self.use_fp16,
+            "device": self.device,
             "batch_size": self.batch_size,
             "max_length": self.max_length,
             "limit": self.limit,

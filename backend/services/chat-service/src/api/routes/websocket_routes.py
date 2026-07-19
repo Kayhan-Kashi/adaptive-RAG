@@ -1,3 +1,5 @@
+# api/routes/websocket.py
+
 import logging
 from datetime import datetime
 from typing import List, Optional
@@ -72,9 +74,26 @@ async def websocket_endpoint(
                     prompt = data.get("prompt")
                     file_ids: Optional[List[str]] = data.get("file_ids", [])
                     
+                    # ============================================================
+                    # Extract RAG Configuration from WebSocket message
+                    # ============================================================
+                    retrieval_k = data.get("retrieval_k", 20)
+                    similarity_threshold = data.get("similarity_threshold", 0.5)
+                    min_docs_required = data.get("min_docs_required", 3)
+                    top_k = data.get("top_k", 5)
+                    use_hyde = data.get("use_hyde", True)
+                    sparse_ratio = data.get("sparse_ratio", 0.2)
+                    retrieval_total_k = data.get("retrieval_total_k", 20)
+                    use_reranker = data.get("use_reranker", True)
+                    use_mmr = data.get("use_mmr", True)
+                    mmr_fetch_k = data.get("mmr_fetch_k", 200)
+                    mmr_lambda_mult = data.get("mmr_lambda_mult", 0.8)
+                    
                     logger.info(f"💬 Chat message from user {user_id} in conversation {conversation_id}")
                     logger.info(f"   Prompt: {prompt[:100]}...")
                     logger.info(f"   File IDs: {file_ids}")
+                    logger.info(f"   ⚙️ RAG Config: retrieval_k={retrieval_k}, threshold={similarity_threshold}, top_k={top_k}")
+                    logger.info(f"   HyDE={use_hyde}, MMR={use_mmr}, lambda={mmr_lambda_mult}")
                     
                     connection_manager.register_conversation(conversation_id, user_id)
                     
@@ -83,18 +102,40 @@ async def websocket_endpoint(
                         conversation_id=conversation_id,
                         prompt=prompt,
                         answer=None,
-                        file_ids=file_ids  
+                        file_ids=file_ids,
+                        # ============================================================
+                        # Pass all RAG configuration parameters
+                        # ============================================================
+                        retrieval_k=retrieval_k,
+                        similarity_threshold=similarity_threshold,
+                        min_docs_required=min_docs_required,
+                        top_k=top_k,
+                        use_hyde=use_hyde,
+                        sparse_ratio=sparse_ratio,
+                        retrieval_total_k=retrieval_total_k,
+                        use_reranker=use_reranker,
+                        use_mmr=use_mmr,
+                        mmr_fetch_k=mmr_fetch_k,
+                        mmr_lambda_mult=mmr_lambda_mult,
                     )
                     
                     logger.info(f"📝 Dialogue created: {dialogue_id}")
                     logger.info(f"   Associated file IDs: {file_ids}")
-                    logger.info(f"📤 Kafka event published by ConversationService")
+                    logger.info("📤 Kafka event published by ConversationService")
                     
                     await websocket.send_json({
                         "type": "ack",
                         "conversation_id": conversation_id,
                         "dialogue_id": str(dialogue_id),
                         "file_ids": file_ids,
+                        "config": {
+                            "retrieval_k": retrieval_k,
+                            "similarity_threshold": similarity_threshold,
+                            "top_k": top_k,
+                            "use_hyde": use_hyde,
+                            "use_mmr": use_mmr,
+                            "mmr_lambda_mult": mmr_lambda_mult,
+                        },
                         "timestamp": datetime.utcnow().isoformat()
                     })
                     logger.debug(f"✅ Sent acknowledgment to user {user_id}")

@@ -21,7 +21,12 @@ RUN pip install  langchain-core --index-url ${PIP_INDEX_URL}
 RUN pip install langchain-community --index-url ${PIP_INDEX_URL}
 RUN pip install rank_bm25 langchain-community scipy --index-url ${PIP_INDEX_URL}
 RUN pip install FlagEmbedding --index-url ${PIP_INDEX_URL}
+RUN pip install langgraph --index-url ${PIP_INDEX_URL}
+RUN pip install langgraph-checkpoint --index-url ${PIP_INDEX_URL}
+RUN pip install httpx --index-url ${PIP_INDEX_URL}
 
+# Optional: For better performance with async
+RUN pip install aiohttp --index-url ${PIP_INDEX_URL}
 
 COPY backend/shared/ ./shared/
 RUN pip install ./shared --index-url ${PIP_INDEX_URL}

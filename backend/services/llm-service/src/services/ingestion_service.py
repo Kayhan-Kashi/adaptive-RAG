@@ -8,11 +8,11 @@ from langchain_community.vectorstores import FAISS
 from langchain_community.retrievers import BM25Retriever
 from langchain_core.documents import Document
 
-from src.core.document_loader import DocumentLoader
-from src.core.text_chunker import TextChunker
-from src.core.text_preprocessor import TextPreprocessor
-from src.core.jina_wrapper import JinaLangChainWrapper
-from src.core.embedding_model import EmbeddingModel
+from .core.document_loader import DocumentLoader
+from .core.text_chunker import TextChunker
+from .core.text_preprocessor import TextPreprocessor
+from .core.jina_wrapper import JinaLangChainWrapper
+from .core.embedding_model import EmbeddingModel
 
 logger = logging.getLogger(__name__)
 
@@ -23,16 +23,15 @@ class IngestionService:
     Responsible for creating and updating FAISS and BM25 indexes.
     Preserves page metadata from documents.
     """
-    
     @inject
     def __init__(
         self,
-        document_loader: DocumentLoader,
+        doc_loader: DocumentLoader,
         text_preprocessor: TextPreprocessor,
         text_chunker: TextChunker,
         embedding_model: EmbeddingModel
     ):
-        self.doc_loader = document_loader
+        self.doc_loader = doc_loader
         self.text_preprocessor = text_preprocessor
         self.text_chunker = text_chunker
         self.embedding_model = embedding_model
@@ -40,7 +39,7 @@ class IngestionService:
         if os.path.exists("/app"):
             base_dir = "/app"
         else:
-            base_dir = "."
+            base_dir = "../../../models"
         
         self.faiss_index_path = os.getenv("FAISS_INDEX_PATH", os.path.join(base_dir, "faiss_index"))
         self.bm25_index_path = os.getenv("BM25_INDEX_PATH", os.path.join(base_dir, "bm25_index"))
@@ -55,7 +54,7 @@ class IngestionService:
         
         self.vector_store = None
         self.bm25_retriever = None
-        self.all_chunks = []
+        self.all_chunks = []   #type: ignore
         
         self.mmr_fetch_k = int(os.getenv("MMR_FETCH_K", "200"))
         self.mmr_lambda_mult = float(os.getenv("MMR_LAMBDA_MULT", "0.5"))
@@ -163,13 +162,13 @@ class IngestionService:
         
         # Update BM25
         self.all_chunks.extend(chunks)
-        self.bm25_retriever = BM25Retriever.from_documents(self.all_chunks)
+        self.bm25_retriever = BM25Retriever.from_documents(self.all_chunks) #type: ignore
         logger.info(f"   BM25: {len(self.all_chunks)} total chunks")
         
         # Update FAISS
         langchain_compatible_model = JinaLangChainWrapper(self.embedding_model.model)
         if self.vector_store is None:
-            self.vector_store = FAISS.from_documents(chunks, langchain_compatible_model)
+            self.vector_store = FAISS.from_documents(chunks, langchain_compatible_model) #type: ignore
             logger.info(f"✅ Created FAISS store: {len(chunks)} chunks")
         else:
             self.vector_store.add_documents(chunks)
@@ -458,13 +457,13 @@ class IngestionService:
             List of page numbers
         """
         chunks = self.get_chunks_by_file_ids([document_id])
-        pages = sorted(set(
+        pages = sorted(set(  #type: ignore
             chunk.metadata.get('page_number') 
             for chunk in chunks 
             if chunk.metadata.get('page_number') is not None
         ))
         logger.info(f"📄 Document {document_id} has {len(pages)} pages")
-        return pages
+        return pages #type: ignore
       
     def get_page_count(self, document_id: str) -> int:
         """
@@ -515,7 +514,7 @@ class IngestionService:
     def get_stats(self) -> Dict[str, Any]:
         """Get ingestion statistics"""
 
-        pages_by_doc = {}
+        pages_by_doc = {} #type: ignore
         for chunk in self.all_chunks:
             doc_id = chunk.metadata.get('document_id')
             if doc_id:
@@ -525,7 +524,7 @@ class IngestionService:
                 if page_num:
                     pages_by_doc[doc_id].add(page_num)
         
-        total_pages = sum(len(pages) for pages in pages_by_doc.values())
+        total_pages = sum(len(pages) for pages in pages_by_doc.values()) #type: ignore
         
         return {
             "faiss": {
@@ -560,3 +559,52 @@ class IngestionService:
         self.bm25_retriever = None
         self.all_chunks = []
         logger.info("🗑️ Indexes cleared")
+        
+            
+    def get_dense_vector_store(self):
+        """
+        Get the dense vector store (FAISS).
+        Returns None if not loaded.
+        """
+        return self.vector_store
+
+    def get_sparse_retriever(self):
+        """
+        Get the sparse retriever (BM25).
+        Returns None if not loaded.
+        """
+        return self.bm25_retriever
+
+    def get_chunk_count(self) -> int:
+        """Get total number of chunks in the index."""
+        return len(self.all_chunks)
+
+    def is_index_loaded(self) -> bool:
+        """Check if indexes are loaded."""
+        return self.vector_store is not None and self.bm25_retriever is not None
+
+    def get_index_stats(self) -> Dict[str, Any]:
+        """
+        Get detailed index statistics.
+        """
+        return {
+            "dense": {
+                "loaded": self.vector_store is not None,
+                "vectors": self.vector_store.index.ntotal if self.vector_store else 0,
+                "dimension": self.vector_store.index.d if self.vector_store else 0,
+                "path": self.faiss_index_path
+            },
+            "sparse": {
+                "loaded": self.bm25_retriever is not None,
+                "chunks": len(self.all_chunks),
+                "path": self.bm25_index_path
+            },
+            "chunking": {
+                "default_size": self.default_chunk_size,
+                "default_overlap": self.default_chunk_overlap
+            },
+            "mmr": {
+                "fetch_k": self.mmr_fetch_k,
+                "lambda_mult": self.mmr_lambda_mult
+            }
+        }

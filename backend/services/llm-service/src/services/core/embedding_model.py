@@ -1,5 +1,6 @@
 import os
 import logging
+import torch  # <-- ADDED: import torch
 from injector import inject
 from transformers import AutoModel
 from huggingface_hub import snapshot_download
@@ -7,9 +8,8 @@ from huggingface_hub import snapshot_download
 logger = logging.getLogger(__name__)
 
 class EmbeddingModel:
-    @inject
     def __init__(self):
-        self.model_path = os.getenv("MODEL_PATH", "/app/models/snapshot/jina-embeddings-v3")
+        self.model_path = os.getenv("MODEL_PATH", "../../../models/snapshot/jina-embeddings-v3")
         self.repo_id = os.getenv("MODEL_REPO_ID", "jinaai/jina-embeddings-v3")
         
         # If TRANSFORMERS_OFFLINE=1, local_files_only=True
@@ -67,7 +67,11 @@ class EmbeddingModel:
                 trust_remote_code=True,
                 local_files_only=self.is_offline
             )
-            logger.info("✅ Model loaded successfully!")
+            
+            # <-- ADDED: Force model to CPU
+            model = model.to("cpu")
+            logger.info("✅ Model loaded successfully on CPU!")
+            
             return model
         except Exception as e:
             logger.error(f"❌ Failed to load model: {str(e)}")

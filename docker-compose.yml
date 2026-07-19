@@ -97,7 +97,7 @@ services:
       environment:
         - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
         - CONSUMER_GROUP=llm-worker-group
-        - OLLAMA_MODEL=gemma3:12b
+        - OLLAMA_MODEL=gemma3:4b
         - OLLAMA_BASE_URL=http://172.17.0.1:11434
         - OLLAMA_TEMPERATURE=0.3
         - MODEL_PATH=/app/models/snapshot/jina-embeddings-v3
@@ -106,7 +106,6 @@ services:
         - TRANSFORMERS_OFFLINE=0
         - HF_HUB_DISABLE_SYMLINKS_WARNING=1
         - HF_HOME=/app/models/hf_cache
-        - USE_HYDE=False
       volumes:
         - ./data/uploaded_files:/app/uploads 
         - ./models/snapshot/jina-embeddings-v3:/app/models/snapshot/jina-embeddings-v3

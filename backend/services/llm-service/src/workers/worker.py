@@ -3,7 +3,7 @@ import json
 import sys
 import traceback
 import os
-from confluent_kafka import Consumer, Producer, KafkaError  
+from confluent_kafka import Consumer, Producer, KafkaError  #type: ignore
 from injector import Injector
 import logging
 
@@ -13,7 +13,7 @@ from src.registry import register_handlers, get_consumption_topics, get_event_ty
 from common.events.document_uploaded import DocumentUploadedEvent #type: ignore
 from common.events.prompt_answer_requested import PromptAnswerRequestedEvent #type: ignore
 from src.handlers.document_uploaded_handler import DocumentUploadedHandler
-from src.handlers.prompt_requested_handler import PromptAnswerRequestedHandler
+from src.handlers.prompt_requested_graph_handler import PromptAnswerRequestedHandler
 
 
 

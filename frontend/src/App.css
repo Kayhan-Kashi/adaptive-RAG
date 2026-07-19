@@ -334,26 +334,32 @@ body {
   background: #48bb78;
 }
 
+
 .message-text {
   max-width: 70%;
   padding: 0.75rem 1rem;
   border-radius: 1rem;
   line-height: 1.4;
   font-size: 0.9rem;
-  direction: rtl;
+  /* direction: rtl; */
+  direction: ltr;
+  white-space: pre-wrap;  /* ✅ This preserves newlines */
+  word-wrap: break-word;  /* ✅ This breaks long words */
 }
 
 .message.user .message-text {
   background: #667eea;
   color: white;
-  direction: rtl;
+  /* direction: rtl; */
+  direction: ltr;
 }
 
 .message.assistant .message-text {
   background: white;
   color: #1a1a2e;
   box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-  direction: rtl;
+  /* direction: rtl; */
+  direction: ltr;
 }
 
 .typing {
@@ -865,4 +871,192 @@ body {
 
 .file-item input[type="checkbox"]:disabled + .file-icon + .file-name + .file-status-badge {
   opacity: 0.5;
+}
+
+/* RAG Config Panel */
+.rag-config-panel {
+  background: white;
+  border-bottom: 1px solid #e0e0e0;
+  transition: all 0.3s ease;
+}
+
+.rag-config-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  background: #f8f9fc;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #333;
+  user-select: none;
+}
+
+.rag-config-header:hover {
+  background: #f0f0f0;
+}
+
+.config-toggle {
+  font-size: 0.7rem;
+  color: #999;
+}
+
+.rag-config-body {
+  padding: 1rem;
+  background: #fafafa;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem 1.5rem;
+}
+
+.config-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+}
+
+.config-row label {
+  min-width: 80px;
+  font-weight: 500;
+  color: #555;
+  font-size: 0.75rem;
+}
+
+.config-row input[type="number"] {
+  width: 60px;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 0.8rem;
+}
+
+.config-row input[type="range"] {
+  flex: 1;
+  min-width: 80px;
+  height: 4px;
+  -webkit-appearance: none;
+  background: #ddd;
+  border-radius: 2px;
+  outline: none;
+}
+
+.config-row input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #667eea;
+  cursor: pointer;
+}
+
+.config-value {
+  min-width: 30px;
+  text-align: center;
+  font-weight: 600;
+  color: #667eea;
+  font-size: 0.75rem;
+}
+
+.config-hint {
+  font-size: 0.6rem;
+  color: #999;
+  margin-left: 0.25rem;
+}
+
+.toggle-group {
+  display: flex;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid #ddd;
+}
+
+.toggle-group button {
+  padding: 0.15rem 0.6rem;
+  border: none;
+  background: #f0f0f0;
+  color: #666;
+  cursor: pointer;
+  font-size: 0.7rem;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.toggle-group button.active {
+  background: #667eea;
+  color: white;
+}
+
+.toggle-group button:not(:last-child) {
+  border-right: 1px solid #ddd;
+}
+
+.toggle-group button:hover:not(.active) {
+  background: #e0e0e0;
+}
+
+/* Config button in chat header */
+.config-btn {
+  background: #f0f0f0;
+  border: none;
+  padding: 0.4rem 0.8rem;
+  border-radius: 0.5rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background 0.2s;
+  color: #333;
+}
+
+.config-btn:hover {
+  background: #e0e0e0;
+}
+
+/* Upload status styles */
+.upload-status {
+  margin-top: 0.75rem;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  font-size: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.upload-status.uploading {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+.upload-status.uploaded {
+  background: rgba(72, 187, 120, 0.2);
+  color: #2f855a;
+}
+
+.upload-status.error {
+  background: rgba(245, 101, 101, 0.2);
+  color: #c53030;
+}
+
+.upload-status.deleted {
+  background: rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.status-sub-text {
+  font-size: 0.7rem;
+  opacity: 0.7;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .rag-config-body {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+  
+  .config-row label {
+    min-width: 60px;
+  }
 }

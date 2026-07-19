@@ -21,7 +21,7 @@ class DocumentUploadedHandler:
     async def handle(self, event: DocumentUploadedEvent, db: Optional[Any] = None):
         """Handle consumed document upload event and return completion event"""
         try:
-            logger.info(f"📥 [LLM] Processing document upload event")
+            logger.info("📥 [LLM] Processing document upload event")
             logger.info(f"   Document ID: {event.document_id[:8]}...")
             logger.info(f"   Filename: {event.filename}")
             logger.info(f"   File type: {event.filetype}")

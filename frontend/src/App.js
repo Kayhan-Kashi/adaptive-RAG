@@ -28,7 +28,25 @@ function App() {
   const [showFileSelector, setShowFileSelector] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState(null);
-  const [isStreaming, setIsStreaming] = useState(false); // ✅ Track streaming state
+  const [isStreaming, setIsStreaming] = useState(false);
+  
+  // ============================================================
+  // RAG Configuration State (with defaults matching backend)
+  // ============================================================
+  const [ragConfig, setRagConfig] = useState({
+    retrieval_k: 20,
+    similarity_threshold: 0.5,
+    min_docs_required: 3,
+    top_k: 5,
+    use_hyde: true,
+    sparse_ratio: 0.2,
+    retrieval_total_k: 20,
+    use_reranker: true,
+    use_mmr: true,
+    mmr_fetch_k: 200,
+    mmr_lambda_mult: 0.8,
+  });
+  const [showRagConfig, setShowRagConfig] = useState(false);
   
   const wsRef = useRef(null);
   const messageQueueRef = useRef([]);
@@ -61,14 +79,11 @@ function App() {
       console.log(`📝 Chunk ${chunk_index}:`, chunk.substring(0, 50) + '...');
       console.log(`   is_last: ${is_last}`);
       
-      // ✅ Set streaming state to true
       setIsStreaming(true);
       
-      // Append chunk to current assistant message
       setMessages(prev => {
         const lastMessage = prev[prev.length - 1];
         if (lastMessage && lastMessage.role === 'assistant') {
-          // Update existing assistant message
           const updated = [...prev];
           updated[updated.length - 1] = {
             ...lastMessage,
@@ -76,14 +91,13 @@ function App() {
           };
           return updated;
         } else {
-          // Create new assistant message
           return [...prev, { role: 'assistant', content: chunk }];
         }
       });
       
       if (is_last) {
         setLoading(false);
-        setIsStreaming(false); // ✅ Streaming complete
+        setIsStreaming(false);
         console.log('✅ Stream completed');
       }
     } else if (type === 'answer') {
@@ -100,6 +114,9 @@ function App() {
       }
       if (data.dialogue_id) {
         console.log(`   Dialogue ID: ${data.dialogue_id}`);
+      }
+      if (data.config) {
+        console.log(`   RAG Config:`, data.config);
       }
     } else if (type === 'error') {
       console.error('❌ Server error:', data.error);
@@ -164,20 +181,44 @@ function App() {
     };
   }, [user, currentView, connectWebSocket]);
 
-  const sendWebSocketMessage = useCallback((conversationId, prompt, fileIds = []) => {
+  // ✅ Updated sendWebSocketMessage to include RAG config
+  const sendWebSocketMessage = useCallback((conversationId, prompt, fileIds = [], config = {}) => {
     const message = {
       type: 'chat',
       conversation_id: conversationId,
       prompt: prompt,
-      file_ids: fileIds
+      file_ids: fileIds,
+      // ============================================================
+      // RAG Configuration Parameters
+      // ============================================================
+      retrieval_k: config.retrieval_k || ragConfig.retrieval_k,
+      similarity_threshold: config.similarity_threshold || ragConfig.similarity_threshold,
+      min_docs_required: config.min_docs_required || ragConfig.min_docs_required,
+      top_k: config.top_k || ragConfig.top_k,
+      use_hyde: config.use_hyde !== undefined ? config.use_hyde : ragConfig.use_hyde,
+      sparse_ratio: config.sparse_ratio || ragConfig.sparse_ratio,
+      retrieval_total_k: config.retrieval_total_k || ragConfig.retrieval_total_k,
+      use_reranker: config.use_reranker !== undefined ? config.use_reranker : ragConfig.use_reranker,
+      use_mmr: config.use_mmr !== undefined ? config.use_mmr : ragConfig.use_mmr,
+      mmr_fetch_k: config.mmr_fetch_k || ragConfig.mmr_fetch_k,
+      mmr_lambda_mult: config.mmr_lambda_mult || ragConfig.mmr_lambda_mult,
     };
+    
+    console.log('📤 Sending WebSocket message with RAG config:', {
+      retrieval_k: message.retrieval_k,
+      similarity_threshold: message.similarity_threshold,
+      top_k: message.top_k,
+      use_hyde: message.use_hyde,
+      use_mmr: message.use_mmr,
+      mmr_lambda_mult: message.mmr_lambda_mult,
+    });
     
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(message));
     } else {
       messageQueueRef.current.push(message);
     }
-  }, []);
+  }, [ragConfig]);
 
   const loadConversations = useCallback(async () => {
     if (!user) return;
@@ -281,6 +322,7 @@ function App() {
     }
   };
 
+  // ✅ Updated sendMessage with RAG config
   const sendMessage = () => {
     if (!inputMessage.trim() || !currentConversation) return;
 
@@ -299,7 +341,8 @@ function App() {
       }));
     }
     
-    sendWebSocketMessage(currentConversation.id, userMessage, fileIds);
+    // ✅ Pass RAG config with the message
+    sendWebSocketMessage(currentConversation.id, userMessage, fileIds, ragConfig);
   };
 
   const deleteConversation = async (conversationId) => {
@@ -314,6 +357,14 @@ function App() {
     } catch (error) {
       console.error('Error deleting conversation:', error);
     }
+  };
+
+  // ✅ Handle RAG config changes
+  const handleRagConfigChange = (key, value) => {
+    setRagConfig(prev => ({
+      ...prev,
+      [key]: value
+    }));
   };
 
   const handleFileUpload = async (event) => {
@@ -389,6 +440,113 @@ function App() {
       default: return '📎';
     }
   };
+
+  // RAG Config Panel Component
+  const RagConfigPanel = () => (
+    <div className={`rag-config-panel ${showRagConfig ? 'open' : ''}`}>
+      <div className="rag-config-header" onClick={() => setShowRagConfig(!showRagConfig)}>
+        <span>⚙️ RAG Settings</span>
+        <span className="config-toggle">{showRagConfig ? '▼' : '▶'}</span>
+      </div>
+      {showRagConfig && (
+        <div className="rag-config-body">
+          <div className="config-row">
+            <label>Retrieval K</label>
+            <input
+              type="number"
+              value={ragConfig.retrieval_k}
+              onChange={(e) => handleRagConfigChange('retrieval_k', parseInt(e.target.value) || 20)}
+              min="1"
+              max="100"
+            />
+            <span className="config-hint">Number of candidates</span>
+          </div>
+          <div className="config-row">
+            <label>Similarity Threshold</label>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              value={ragConfig.similarity_threshold}
+              onChange={(e) => handleRagConfigChange('similarity_threshold', parseFloat(e.target.value))}
+            />
+            <span className="config-value">{ragConfig.similarity_threshold.toFixed(2)}</span>
+          </div>
+          <div className="config-row">
+            <label>Min Docs Required</label>
+            <input
+              type="number"
+              value={ragConfig.min_docs_required}
+              onChange={(e) => handleRagConfigChange('min_docs_required', parseInt(e.target.value) || 3)}
+              min="1"
+              max="20"
+            />
+          </div>
+          <div className="config-row">
+            <label>Top K</label>
+            <input
+              type="number"
+              value={ragConfig.top_k}
+              onChange={(e) => handleRagConfigChange('top_k', parseInt(e.target.value) || 5)}
+              min="1"
+              max="20"
+            />
+            <span className="config-hint">Final results</span>
+          </div>
+          <div className="config-row">
+            <label>HyDE</label>
+            <div className="toggle-group">
+              <button 
+                className={ragConfig.use_hyde ? 'active' : ''}
+                onClick={() => handleRagConfigChange('use_hyde', true)}
+              >On</button>
+              <button 
+                className={!ragConfig.use_hyde ? 'active' : ''}
+                onClick={() => handleRagConfigChange('use_hyde', false)}
+              >Off</button>
+            </div>
+          </div>
+          <div className="config-row">
+            <label>MMR</label>
+            <div className="toggle-group">
+              <button 
+                className={ragConfig.use_mmr ? 'active' : ''}
+                onClick={() => handleRagConfigChange('use_mmr', true)}
+              >On</button>
+              <button 
+                className={!ragConfig.use_mmr ? 'active' : ''}
+                onClick={() => handleRagConfigChange('use_mmr', false)}
+              >Off</button>
+            </div>
+          </div>
+          <div className="config-row">
+            <label>MMR Lambda</label>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              value={ragConfig.mmr_lambda_mult}
+              onChange={(e) => handleRagConfigChange('mmr_lambda_mult', parseFloat(e.target.value))}
+            />
+            <span className="config-value">{ragConfig.mmr_lambda_mult.toFixed(2)}</span>
+          </div>
+          <div className="config-row">
+            <label>Sparse Ratio</label>
+            <input
+              type="number"
+              value={ragConfig.sparse_ratio}
+              onChange={(e) => handleRagConfigChange('sparse_ratio', parseFloat(e.target.value) || 0.2)}
+              min="0"
+              max="1"
+              step="0.05"
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
 
   if (currentView === 'login') {
     return (
@@ -549,11 +707,21 @@ function App() {
                 >
                   📄 Docs
                 </button>
+                <button 
+                  onClick={() => setShowRagConfig(!showRagConfig)} 
+                  className="config-btn"
+                  title="RAG Settings"
+                >
+                  ⚙️
+                </button>
                 <button onClick={() => setCurrentView('dashboard')} className="back-btn">
                   ← Dashboard
                 </button>
               </div>
             </div>
+
+            {/* RAG Config Panel */}
+            <RagConfigPanel />
 
             {showFileSelector && (
               <div className="file-modal">
@@ -633,7 +801,6 @@ function App() {
                   ))}
                 </>
               )}
-              {/* ✅ Only show loading if NOT streaming */}
               {loading && !isStreaming && (
                 <div className="message assistant">
                   <div className="message-avatar">🤖</div>

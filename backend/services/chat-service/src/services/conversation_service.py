@@ -1,3 +1,5 @@
+# services/conversation_service.py
+
 import sys
 import uuid
 from fastapi import HTTPException
@@ -7,8 +9,8 @@ from datetime import datetime
 from typing import List, Optional, Dict, Any
 import logging
 
-from common.events import PromptAnswerRequestedEvent #type: ignore
-from common.kafka.producer import KafkaProducer #type: ignore
+from common.events import PromptAnswerRequestedEvent
+from common.kafka.producer import KafkaProducer
 from database.models import Conversation, Dialogue
 
 logging.basicConfig(
@@ -16,7 +18,6 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[logging.StreamHandler(sys.stdout)]
 )
-
 
 logger = logging.getLogger(__name__)
 
@@ -103,9 +104,24 @@ class ConversationService:
         prompt: str,
         answer: Optional[str] = None,
         file_ids: Optional[List[str]] = None,
-        include_history: bool = True
+        include_history: bool = True,
+        # ============================================================
+        # RAG Configuration Parameters (passed from WebSocket route)
+        # ============================================================
+        retrieval_k: int = 20,
+        similarity_threshold: float = 0.5,
+        min_docs_required: int = 3,
+        top_k: int = 5,
+        use_hyde: bool = True,
+        sparse_ratio: float = 0.2,
+        retrieval_total_k: int = 20,
+        use_reranker: bool = True,
+        use_mmr: bool = True,
+        mmr_fetch_k: int = 200,
+        mmr_lambda_mult: float = 0.8,
     ):
-        """Create a new dialogue in a conversation and publish event to Kafka
+        """
+        Create a new dialogue in a conversation and publish event to Kafka
         
         Args:
             session: Database session
@@ -114,6 +130,19 @@ class ConversationService:
             answer: Optional answer (for existing dialogues)
             file_ids: Optional list of document IDs to restrict search context
             include_history: Whether to include conversation history in the event
+            
+            # RAG Configuration Parameters
+            retrieval_k: Number of candidates for initial retrieval (default: 20)
+            similarity_threshold: Score threshold for quality evaluation (default: 0.5)
+            min_docs_required: Minimum docs above threshold (default: 3)
+            top_k: Number of final results (default: 5)
+            use_hyde: Whether to use HyDE fallback (default: True)
+            sparse_ratio: Ratio of sparse results (default: 0.2)
+            retrieval_total_k: Total k for combined results (default: 20)
+            use_reranker: Whether to use reranker (default: True)
+            use_mmr: Whether to use MMR (default: True)
+            mmr_fetch_k: MMR fetch candidates (default: 200)
+            mmr_lambda_mult: MMR lambda parameter (default: 0.8)
         """
         if not conversation_id:
             raise HTTPException(status_code=400, detail="Conversation ID is required")
@@ -143,6 +172,10 @@ class ConversationService:
             if file_ids:
                 logger.info(f"   Associated file_ids: {file_ids}")
             
+            # Log RAG configuration
+            logger.info(f"⚙️ RAG Config: retrieval_k={retrieval_k}, threshold={similarity_threshold}, top_k={top_k}")
+            logger.info(f"   hyde={use_hyde}, mmr={use_mmr}, lambda={mmr_lambda_mult}")
+            
             history = None
             if include_history:
                 history = self._get_conversation_history(session, conversation_id)
@@ -156,7 +189,19 @@ class ConversationService:
                     dialogue=dialogue,
                     prompt=prompt,
                     file_ids=file_ids,
-                    history=history
+                    history=history,
+                    # Pass all RAG configuration
+                    retrieval_k=retrieval_k,
+                    similarity_threshold=similarity_threshold,
+                    min_docs_required=min_docs_required,
+                    top_k=top_k,
+                    use_hyde=use_hyde,
+                    sparse_ratio=sparse_ratio,
+                    retrieval_total_k=retrieval_total_k,
+                    use_reranker=use_reranker,
+                    use_mmr=use_mmr,
+                    mmr_fetch_k=mmr_fetch_k,
+                    mmr_lambda_mult=mmr_lambda_mult,
                 )
             else:
                 logger.warning(f"⚠️ Kafka producer not available, event not published for dialogue: {dialogue.id}")
@@ -181,9 +226,24 @@ class ConversationService:
         dialogue: Dialogue, 
         prompt: str,
         file_ids: Optional[List[str]] = None,
-        history: Optional[List[Dict[str, str]]] = None
+        history: Optional[List[Dict[str, str]]] = None,
+        # ============================================================
+        # RAG Configuration Parameters (passed through to event)
+        # ============================================================
+        retrieval_k: int = 20,
+        similarity_threshold: float = 0.5,
+        min_docs_required: int = 3,
+        top_k: int = 5,
+        use_hyde: bool = True,
+        sparse_ratio: float = 0.2,
+        retrieval_total_k: int = 20,
+        use_reranker: bool = True,
+        use_mmr: bool = True,
+        mmr_fetch_k: int = 200,
+        mmr_lambda_mult: float = 0.8,
     ):
-        """Publish prompt request event to Kafka
+        """
+        Publish prompt request event to Kafka with all RAG configuration.
         
         Args:
             conversation_id: ID of the conversation
@@ -192,6 +252,17 @@ class ConversationService:
             prompt: User's prompt
             file_ids: Optional list of document IDs to restrict search context
             history: Optional conversation history
+            retrieval_k: Number of candidates for initial retrieval
+            similarity_threshold: Score threshold for quality evaluation
+            min_docs_required: Minimum docs above threshold
+            top_k: Number of final results
+            use_hyde: Whether to use HyDE fallback
+            sparse_ratio: Ratio of sparse results
+            retrieval_total_k: Total k for combined results
+            use_reranker: Whether to use reranker
+            use_mmr: Whether to use MMR
+            mmr_fetch_k: MMR fetch candidates
+            mmr_lambda_mult: MMR lambda parameter
         """
         try:
             prompt_event = PromptAnswerRequestedEvent(
@@ -200,7 +271,19 @@ class ConversationService:
                 prompt=prompt,
                 user_id=str(conversation.user_id),
                 file_ids=file_ids,
-                history=history  
+                history=history,
+                # RAG Configuration
+                retrieval_k=retrieval_k,
+                similarity_threshold=similarity_threshold,
+                min_docs_required=min_docs_required,
+                top_k=top_k,
+                use_hyde=use_hyde,
+                sparse_ratio=sparse_ratio,
+                retrieval_total_k=retrieval_total_k,
+                use_reranker=use_reranker,
+                use_mmr=use_mmr,
+                mmr_fetch_k=mmr_fetch_k,
+                mmr_lambda_mult=mmr_lambda_mult,
             )
             
             logger.info(f"📤 Publishing Kafka event for dialogue: {dialogue.id}")
@@ -210,6 +293,8 @@ class ConversationService:
                 logger.info(f"   File IDs: {file_ids}")
             if history:
                 logger.info(f"   History messages: {len(history)}")
+            logger.info(f"   RAG Config: retrieval_k={retrieval_k}, threshold={similarity_threshold}")
+            logger.info(f"   HyDE={use_hyde}, MMR={use_mmr}, lambda={mmr_lambda_mult}")
             
             result = self.kafka_producer.produce(event=prompt_event, key=conversation_id)
             
@@ -342,7 +427,6 @@ class ConversationService:
             logger.error(f"❌ Invalid UUID format for user_id: {user_id}")
             raise HTTPException(status_code=400, detail="Invalid UUID format for user_id")
     
-
     def update_dialogue_answer(self, session: Session, dialogue_id: str, answer: str):
         """Update a dialogue with the assistant's answer"""
         try:

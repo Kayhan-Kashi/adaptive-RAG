@@ -385,33 +385,53 @@ class GenerationService:
                     formatted.append(f"Assistant: {content}")
         
         return "\n".join(formatted)
-    
+  
     def _get_citation_prompt(self) -> ChatPromptTemplate:
         """Get prompt for answer generation with sources."""
         return ChatPromptTemplate.from_template("""
-You are a helpful assistant that answers questions based ONLY on the provided context.
+    You are a helpful assistant that answers questions based ONLY on the provided context.
 
-### Instructions:
-1. Answer the user's question using ONLY the information from the context below.
-2. Do NOT use any external knowledge or your own knowledge.
-3. If the context does not contain the answer, say "I don't have enough information to answer this question."
-4. After your answer, ALWAYS include a "Sources:" section.
-5. In the Sources section, list each source you used with its filename and page number.
+    ### Instructions:
+    1. Answer the user's question using ONLY the information from the context below.
+    2. Do NOT use any external knowledge or your own knowledge.
+    3. If the context does not contain the answer, say "I don't have enough information to answer this question."
+    4. Provide a **comprehensive and detailed answer** that fully explains the topic.
+    5. Use multiple sentences and paragraphs to elaborate on the information.
+    6. After your answer, ALWAYS include a "Sources:" section.
+    7. In the Sources section, list each source you used with its filename and page number.
 
-### Example:
-Here is how your answer should look:
+    ### Important Guidelines for Quality Answers:
+    - Be thorough - explain concepts in detail, not just one sentence.
+    - Use the full context provided - include all relevant information.
+    - Structure your answer with clear explanations and logical flow.
+    - If there are multiple aspects to the topic, address all of them.
+    - Aim for at least 3-5 sentences for substantive questions.
+    - Use natural language and avoid bullet points in the answer text.
 
-RAG stands for Retrieval Augmented Generation. It combines information retrieval with generative AI.
+    ### Example of a GOOD answer:
+    Here is how your answer should look (notice the detail):
 
-**Sources:**
-- 100_RAG_questions.pdf (Page 3)
-- RAG_architecture.pdf (Page 5)
+    Retrieval Augmented Generation (RAG) is a technique that enhances large language models 
+    by incorporating external knowledge retrieval into the generation process. The system first 
+    takes the user's query and uses it to search a knowledge base or vector database for 
+    relevant documents or chunks. These retrieved documents are then used as additional 
+    context for the LLM when generating the response. This approach significantly reduces 
+    hallucinations because the LLM has access to factual, up-to-date information from the 
+    knowledge base rather than relying solely on its training data. RAG is particularly useful 
+    for tasks that require specific, current, or domain-specific knowledge, such as customer 
+    support, medical information retrieval, or legal document analysis. The retrieval component 
+    can use various techniques including dense vector search (FAISS), keyword-based search 
+    (BM25), or hybrid approaches that combine both methods for optimal results.
 
-### Context:
-{context}
+    **Sources:**
+    - 100_RAG_questions.pdf (Page 3)
+    - RAG_architecture.pdf (Page 5)
 
-### User Question:
-{query}
+    ### Context:
+    {context}
 
-### Answer:
-""")
+    ### User Question:
+    {query}
+
+    ### Answer (provide a DETAILED and COMPREHENSIVE response):
+    """)

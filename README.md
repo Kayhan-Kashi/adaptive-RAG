@@ -1,9 +1,10 @@
-# ⚡ Advanced Event-Driven RAG System with Hybrid Retrieval running on Local LLM Models
+# ⚡ Adaptive RAG System - Event-Driven Architecture with Hybrid Retrieval
 
-**An Advanced Event-Driven RAG System with Hybrid Retrieval (FAISS + MMR + BM25 + BGE Reranker + HyDE) using Event-Driven Architecture (Microservices with Kafka Message Broker) running on Local LLM Models (OLLAMA)**
+**An intelligent, event-driven Adaptive RAG (Retrieval-Augmented Generation) system with hybrid retrieval, LangGraph orchestration, and real-time streaming, running entirely on local LLM models.**
 
 [![Python](https://img.shields.io/badge/Python-3.11-blue)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104-green)](https://fastapi.tiangolo.com/)
+[![LangGraph](https://img.shields.io/badge/LangGraph-Orchestration-purple)](https://langchain-ai.github.io/langgraph/)
 [![FAISS](https://img.shields.io/badge/FAISS-MMR-purple)](https://github.com/facebookresearch/faiss)
 [![BM25](https://img.shields.io/badge/BM25-Sparse-yellow)](#)
 [![BGE](https://img.shields.io/badge/BGE-Reranker-blue)](https://github.com/FlagOpen/FlagEmbedding)
@@ -22,15 +23,15 @@
 - [Overview](#overview)
 - [Key Features](#key-features)
 - [Architecture](#architecture)
+- [LangGraph Pipeline Flow](#langgraph-pipeline-flow)
 - [Hybrid Retrieval Pipeline](#hybrid-retrieval-pipeline)
 - [Technology Stack](#technology-stack)
 - [Project Structure](#project-structure)
 - [Quick Start](#quick-start)
 - [Environment Variables](#environment-variables)
-- [HyDE Configuration](#hyde-configuration)
-- [API Endpoints](#api-endpoints)
+- [RAG Configuration](#rag-configuration)
 - [WebSocket Streaming](#websocket-streaming)
-- [FastAPI Backend](#fastapi-backend)
+- [API Endpoints](#api-endpoints)
 - [Privacy First](#privacy-first)
 - [Contributing](#contributing)
 - [License](#license)
@@ -39,138 +40,231 @@
 
 ## Overview
 
-An event-driven **RAG (Retrieval-Augmented Generation)** system built with:
+An event-driven **Adaptive RAG (Retrieval-Augmented Generation)** system that combines:
 
-- 🔄 **Event-Driven Architecture** with asynchronous communication
-- 📨 **Kafka Message Broker** for reliable event streaming
-- 🏗️ **Microservices** for decoupled, scalable services
-- 🎯 **Hybrid Retrieval** using dense + sparse search with diversity
-- 🎯 **Precision Reranking** using cross-encoder for final relevance scoring
-- 🧠 **HyDE** (Hypothetical Document Embeddings) for query transformation
-- 🤖 **Local Models** via OLLAMA - 100% privacy-first, zero cloud costs
+- 🔄 **Event-Driven Microservices** - Decoupled, scalable services with Kafka
+- 🔀 **LangGraph Orchestration** - Intelligent pipeline routing and state management
+- 🎯 **Hybrid Retrieval** - Dense (FAISS + MMR) + Sparse (BM25) search with BGE reranking
+- 🧠 **HyDE** - Hypothetical Document Embeddings for query transformation
+- 🎛️ **Adaptive Retrieval** - Dynamically adjusts strategy based on query quality
+- 🤖 **Local Models** - 100% privacy-first with OLLAMA, zero cloud costs
+- 📡 **Real-time Streaming** - Token-by-token responses via WebSocket
 
 ---
 
 ## 🎯 Key Features
 
-### 1. Event-Driven Microservices
+### 🏗️ Event-Driven Microservices
 - **Decoupled Services** - Independent, scalable microservices
 - **Async Communication** - Non-blocking Kafka events
 - **Fault Tolerance** - Service isolation
 - **Horizontal Scaling** - Scale services independently
 
-### 2. Hybrid Retrieval Pipeline
+### 🔀 LangGraph Orchestration
+- **State Management** - Centralized pipeline state
+- **Conditional Routing** - Intelligent node selection based on quality
+- **Modular Nodes** - Each pipeline step is a separate node
+- **Smart Fallbacks** - Automatic HyDE fallback when quality is poor
+
+### 🎯 Hybrid Retrieval Pipeline
 - **FAISS + MMR** - Dense semantic retrieval with diversity
 - **BM25** - Sparse lexical keyword matching
 - **BGE Reranker** - Cross-encoder precision scoring
+- **Intelligent Routing** - Quality-based pipeline decisions
 
-### 3. HyDE (Hypothetical Document Embeddings)
-- **Query Transformation** - Generates hypothetical documents for better retrieval
-- **Improved Semantic Matching** - Bridges vocabulary gap between queries and documents
-- **Disabled by default** - Enable only when needed
+### 🧠 Adaptive Retrieval Strategy
+- **Quality Evaluation** - Automatic assessment of retrieval quality
+- **Conditional Sparse Attachment** - Adds BM25 results only when quality passes
+- **HyDE Fallback** - Triggers query transformation when quality is poor
+- **Configurable Thresholds** - Adjustable quality thresholds
 
-### 4. Local Models (Privacy First)
-- **OLLAMA** - Run Gemma3, Llama3, Mistral locally
-- **Jina Embeddings v3** - Local dense embeddings
-- **BGE Reranker** - Local cross-encoder reranking
-- **Zero Cloud** - No external API calls
+### 📡 Real-time Streaming
+- **WebSocket Support** - Real-time bidirectional communication
+- **Token-by-Token** - Stream responses as they're generated
+- **Character-by-Character** - True typing effect with configurable delays
+- **Live Updates** - Real-time progress tracking
 
-### 5. Modern UI
-- **React + TypeScript** - Modern, responsive interface
-- **WebSocket Streaming** - Real-time token-by-token responses
-- **Document Management** - Upload, delete, and track document status
-- **Conversation History** - Persistent chat history
+### 🔒 Privacy First
+- **100% Local** - No external API calls
+- **Zero Cloud Costs** - No per-token or per-request fees
+- **Air-Gap Ready** - Works in isolated environments
+- **Data Sovereignty** - Complete control over your data
+- **No Data Leakage** - Your documents never leave your infrastructure
 
 ---
 
 ## 🏗️ Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         React Frontend                                  │
-└─────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                              React Frontend                                    │
+│                          (WebSocket + REST API)                               │
+└─────────────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                      FastAPI Gateway                                   │
-│                   (REST API + Kafka Producer)                          │
-└─────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                         FastAPI Gateway (Chat Service)                        │
+│                      REST API + Kafka Producer + WebSocket                    │
+└─────────────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                   Apache Kafka Message Broker                         │
-│                    ⚡ Event-Driven Communication                       │
-│                                                                         │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  Topics:                                                       │   │
-│  │  ┌───────────────────────┐  ┌───────────────────────────────┐ │   │
-│  │  │ prompt-requested      │  │ prompt-completed              │ │   │
-│  │  └───────────────────────┘  └───────────────────────────────┘ │   │
-│  │  ┌───────────────────────┐  ┌───────────────────────────────┐ │   │
-│  │  │ document-uploaded     │  │ document-embedding-done       │ │   │
-│  │  └───────────────────────┘  └───────────────────────────────┘ │   │
-│  │  ┌───────────────────────────────────────────────────────────┐ │   │
-│  │  │ prompt-answer-chunk-streamed (for real-time streaming)   │ │   │
-│  │  └───────────────────────────────────────────────────────────┘ │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                         Apache Kafka Message Broker                           │
+│                          ⚡ Event-Driven Communication                         │
+│                                                                                 │
+│  ┌─────────────────────────┐  ┌─────────────────────────────────────────────┐ │
+│  │  prompt-requested       │  │  prompt-answer-chunk-streamed               │ │
+│  │  prompt-completed       │  │  document-uploaded                          │ │
+│  │  document-embedding-done│  │  document-indexed                           │ │
+│  └─────────────────────────┘  └─────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────────┘
                                     │
         ┌───────────────────────────┼───────────────────────────┐
         ▼                           ▼                           ▼
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────────┐
-│  LLM Service    │    │  Chat Service   │    │  Ingestion Service  │
-│   (Consumer)    │    │   (Consumer)    │    │    (Consumer)       │
-│                 │    │                 │    │                     │
-│  🧠 OLLAMA      │    │  💬 Chat Logic  │    │  📄 Document        │
-│  (Local Models) │    │                 │    │     Processing      │
-└─────────────────┘    └─────────────────┘    └─────────────────────┘
-        │                       │                       │
-        └───────────────────────┼───────────────────────┘
-                                ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                   ⚡ Hybrid Retrieval Pipeline                         │
-│                                                                         │
-│  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────────┐ │
-│  │   FAISS + MMR    │  │   BM25 (Sparse)  │  │  BGE Reranker        │ │
-│  │   Dense Search   │ +│   Lexical Search │ →│  Cross-Encoder       │ │
-│  │   Semantic +     │  │   Keyword        │  │  Precision Scoring   │ │
-│  │   Diversity      │  │   Matching       │  │  Final Ranking       │ │
-│  └──────────────────┘  └──────────────────┘  └──────────────────────┘ │
-│                                                                         │
-│  🔄 HyDE (Hypothetical Document Embeddings) for Query Transformation   │
-└─────────────────────────────────────────────────────────────────────────┘
+┌───────────────────┐    ┌───────────────────┐    ┌───────────────────────┐
+│   LLM Service     │    │   Chat Worker     │    │   Ingestion Service   │
+│   (Consumer)      │    │   (Consumer)      │    │    (Consumer)         │
+│                   │    │                   │    │                       │
+│  🔀 Adaptive      │    │  💬 Chat Logic    │    │  📄 Document          │
+│  RAG Pipeline     │    │  Database Update  │    │     Processing        │
+│  (LangGraph)      │    │                   │    │                       │
+└───────────────────┘    └───────────────────┘    └───────────────────────┘
+        │
+        ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                    🔀 Adaptive LangGraph RAG Pipeline                         │
+│                                                                                 │
+│  ┌─────────────────────────────────────────────────────────────────────────┐   │
+│  │                         PIPELINE FLOW                                   │   │
+│  │                                                                          │   │
+│  │  ┌──────────────┐    ┌──────────────┐    ┌──────────────────────────┐  │   │
+│  │  │ Coreference  │ → │   Query      │ → │    Query                  │  │   │
+│  │  │ Resolution   │    │   Analysis   │    │    Rewriting             │  │   │
+│  │  └──────────────┘    └──────────────┘    └──────────────────────────┘  │   │
+│  │                                                       │                 │   │
+│  │                                                       ▼                 │   │
+│  │  ┌──────────────────────────────────────────────────────────────────┐  │   │
+│  │  │          Dense Retrieval (FAISS + MMR)                          │  │   │
+│  │  │  • 20 chunks retrieved with MMR diversity                      │  │   │
+│  │  └──────────────────────────────────────────────────────────────────┘  │   │
+│  │                                                       │                 │   │
+│  │                                                       ▼                 │   │
+│  │  ┌──────────────────────────────────────────────────────────────────┐  │   │
+│  │  │          Quality Evaluation                                     │  │   │
+│  │  │  ┌────────────────────┐  ┌────────────────────────────────┐    │  │   │
+│  │  │  │ ✅ QUALITY PASSED  │  │ ❌ QUALITY FAILED              │    │  │   │
+│  │  │  │  → Attach Sparse   │  │  → Trigger HyDE Fallback      │    │  │   │
+│  │  │  │  (BM25)            │  │  → Retry Retrieval            │    │  │   │
+│  │  │  └────────────────────┘  └────────────────────────────────┘    │  │   │
+│  │  └──────────────────────────────────────────────────────────────────┘  │   │
+│  │                    │                      │                           │   │
+│  │                    ▼                      ▼                           │   │
+│  │  ┌────────────────────────────┐  ┌────────────────────────────────┐  │   │
+│  │  │  BGE Reranker +            │  │  HyDE Generation +             │  │   │
+│  │  │  Generation                │  │  Retry Retrieval              │  │   │
+│  │  └────────────────────────────┘  └────────────────────────────────┘  │   │
+│  │                                                       │                 │   │
+│  │                                                       ▼                 │   │
+│  │  ┌──────────────────────────────────────────────────────────────────┐  │   │
+│  │  │          OLLAMA Generation (Streaming)                          │  │   │
+│  │  │  • Token-by-token streaming                                     │  │   │
+│  │  │  • Citation extraction                                          │  │   │
+│  │  └──────────────────────────────────────────────────────────────────┘  │   │
+│  └─────────────────────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## 🔀 LangGraph Pipeline Flow
+
+### Pipeline Nodes
+
+| # | Node | Description | Input | Output |
+|---|------|-------------|-------|--------|
+| 1 | **Coreference Resolution** | Resolves pronouns using conversation history | Query + History | Resolved Query |
+| 2 | **Query Analysis** | Analyzes query length and complexity | Resolved Query | Query State |
+| 3 | **Query Rewriting** | Expands short or decomposes long queries | Query + State | Rewritten Queries |
+| 4 | **HyDE Generation** | Generates hypothetical document (fallback) | Query | HyDE Document |
+| 5 | **Dense Retrieval** | FAISS similarity search with MMR | Query | Dense Chunks |
+| 6 | **Quality Evaluation** | Checks if documents meet threshold | Dense Chunks | Quality Pass/Fail |
+| 7 | **Sparse Attachment** | Attaches BM25 results (if quality passes) | Query | Combined Chunks |
+| 8 | **Reranking** | BGE cross-encoder reranking | Combined Chunks | Ranked Chunks |
+| 9 | **Generation** | OLLAMA answer generation with citations | Ranked Chunks | Answer |
+
+### Conditional Routing Logic
+
+```
+Quality Evaluation
+        │
+        ├─── QUALITY PASSED ───> Rerank → Generation
+        │
+        └─── QUALITY FAILED ───> HyDE (if enabled) → Retry Retrieval
+                                  │
+                                  └─── HyDE Already Used → Generation (fallback)
+```
+
+### Adaptive Decisions
+
+| Condition | Action |
+|-----------|--------|
+| **Quality Passed** | Attach sparse results → Rerank → Generate |
+| **Quality Failed + HyDE Enabled** | Generate HyDE → Retry Retrieval |
+| **Quality Failed + HyDE Disabled** | Skip HyDE → Generate with best available |
+| **Quality Failed + HyDE Already Used** | Proceed to generation with fallback |
 
 ---
 
 ## 🔧 Hybrid Retrieval Pipeline
 
-### Stage 1: HyDE (Query Transformation) - Optional
+### Stage 1: Coreference Resolution
+- Resolves pronouns (it, this, that, these, those) using conversation history
+- Replaces pronouns with correct entities
+- Improves query clarity for better retrieval
+
+### Stage 2: Query Analysis & Rewriting
+- **Short Queries** (< 30 chars) → Expanded with relevant keywords
+- **Long Queries** (> 100 chars) → Decomposed into sub-queries
+- **Well-formed** → Passed through unchanged
+
+### Stage 3: HyDE (Query Transformation) - Optional
 - Generates a hypothetical document from the user query
 - Transforms the query into a document-like format for better retrieval
-- Improves semantic matching with documents
-- **Disabled by default** - Enable via `USE_HYDE=True`
+- **Smart Activation** - Only triggered when quality fails
 
-### Stage 2: FAISS + MMR (Dense Retrieval with Diversity)
+### Stage 4: FAISS + MMR (Dense Retrieval with Diversity)
 - FAISS for fast similarity search on dense embeddings
 - MMR (Maximum Marginal Relevance) for diverse, non-redundant results
-- Output - Semantically relevant + diverse candidate set
+- **Configurable Lambda** - Balance between relevance (0.8) and diversity (0.2)
 
-### Stage 3: BM25 (Sparse Lexical Retrieval)
+### Stage 5: Quality Evaluation
+- Checks if documents meet the similarity threshold
+- **Pass** → Proceed to sparse attachment + reranking
+- **Fail** → Trigger HyDE fallback (if enabled)
+
+### Stage 6: BM25 (Sparse Lexical Retrieval) - Conditional
 - BM25 for keyword-based lexical matching
-- Output - Lexically relevant candidates
+- **Only executed when quality passes**
+- Adds 20% sparse results to the candidate pool
 
-### Stage 4: BGE Reranker (Cross-Encoder Precision)
+### Stage 7: BGE Reranker (Cross-Encoder Precision)
 - BGE Reranker v2 for final precision scoring
 - Cross-encoder for deep relevance assessment
 - Output - Highly relevant, precision-ranked final results
 
+### Stage 8: Generation (OLLAMA)
+- OLLAMA local LLM for answer generation
+- Streaming token-by-token responses
+- Citation extraction from sources
+- Character-by-character streaming with configurable delays
+
 ---
 
-## 🔧 Technology Stack
+## 🛠️ Technology Stack
 
 | Component | Technology | Role |
 |-----------|------------|------|
+| **Orchestration** | LangGraph | Pipeline orchestration & state management |
 | **Message Broker** | Apache Kafka | Async event communication |
 | **LLM** | OLLAMA (Local) | Text generation + HyDE |
 | **Query Transform** | HyDE | Hypothetical Document Embeddings |
@@ -178,11 +272,14 @@ An event-driven **RAG (Retrieval-Augmented Generation)** system built with:
 | **Sparse Search** | BM25 | Lexical keyword matching |
 | **Reranker** | BGE Reranker v2 | Cross-encoder precision |
 | **Embeddings** | Jina AI v3 | Dense vector encoding |
+| **Coreference** | Custom LLM | Pronoun resolution |
+| **Query Rewriting** | LLM-based | Query expansion/decomposition |
 | **Backend** | Python 3.11 + FastAPI | Kafka producers/consumers |
 | **Frontend** | React + TypeScript | Modern UI |
 | **WebSocket** | FastAPI WebSockets | Real-time streaming |
 | **Database** | SQLite | Conversation storage |
 | **Orchestration** | Docker Compose | Container management |
+| **Monitoring** | Kafdrop | Kafka UI |
 
 ---
 
@@ -205,8 +302,16 @@ advanced-RAG/
 │   │       ├── Dockerfile
 │   │       ├── requirements.txt
 │   │       └── src/
-│   │           ├── services/
-│   │           ├── core/
+│   │           ├── orchestrator/
+│   │           │   ├── orchestrator_graph.py   # LangGraph pipeline
+│   │           │   ├── orchestrator_nodes.py   # Pipeline nodes
+│   │           │   ├── orchestrator_state.py   # State definitions
+│   │           │   ├── generation_service.py   # LLM generation
+│   │           │   ├── retrieval_service.py    # Hybrid retrieval
+│   │           │   ├── coreference_resolver.py # Pronoun resolution
+│   │           │   ├── hyde_service.py         # HyDE generation
+│   │           │   ├── query_rewriting_service.py
+│   │           │   └── reranker.py             # BGE reranker
 │   │           ├── handlers/
 │   │           ├── workers/
 │   │           └── main.py
@@ -229,7 +334,6 @@ advanced-RAG/
 │   ├── BAAI/
 │   │   └── models--BAAI--bge-reranker-v2-m3/
 │   ├── bm25_index/
-│   ├── dynamic_modules/
 │   ├── faiss_index/
 │   ├── hf_cache/
 │   └── snapshot/
@@ -256,9 +360,11 @@ Download and install OLLAMA from [https://ollama.com/](https://ollama.com/)
 ### 2. Download a Model
 
 ```bash
+ollama pull gemma3:4b
+# or
 ollama pull gemma3:12b
 # or
-ollama pull llama3:8b
+ollama pull llama3.2:3b
 # or
 ollama pull mistral
 ```
@@ -276,21 +382,44 @@ git clone https://github.com/Kayhan-Kashi/advanced-RAG.git
 cd advanced-RAG
 ```
 
-### 5. Start All Services
+### 5. Configure Environment
 
 ```bash
-docker-compose up -d
+cp .env.example .env
+# Edit .env with your settings
 ```
 
-### 6. Access the Application
+### 6. Build and Start All Services
+
+```bash
+docker-compose up -d --build
+```
+
+### 7. Access the Application
 
 - **Frontend**: http://localhost:3000
 - **Chat Service API**: http://localhost:8001
-- **Kafka UI**: http://localhost:9000
+- **Kafka UI (Kafdrop)**: http://localhost:9000
+- **API Documentation**: http://localhost:8001/docs
+
+### 8. Verify Services
+
+```bash
+# Check all containers are running
+docker-compose ps
+
+# Check Kafka health
+docker-compose exec kafka kafka-broker-api-versions --bootstrap-server localhost:9092
+
+# Check service logs
+docker-compose logs -f rag-llm-service
+```
 
 ---
 
 ## 📊 Environment Variables
+
+### LLM Service Configuration
 
 ```yaml
 rag-llm-service:
@@ -299,45 +428,63 @@ rag-llm-service:
     - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
     - CONSUMER_GROUP=llm-worker-group
     
-    # OLLAMA
-    - OLLAMA_MODEL=gemma3:12b
+    # OLLAMA - Local LLM
+    - OLLAMA_MODEL=gemma3:4b
     - OLLAMA_BASE_URL=http://host.docker.internal:11434
     - OLLAMA_TEMPERATURE=0.3
     
     # Embedding Model
     - MODEL_PATH=/app/models/snapshot/jina-embeddings-v3
     
-    # HuggingFace
+    # HuggingFace Cache
     - HF_HUB_OFFLINE=0
     - HF_HUB_ENABLE_OFFLINE=0
     - TRANSFORMERS_OFFLINE=0
     - HF_HUB_DISABLE_SYMLINKS_WARNING=1
     - HF_HOME=/app/models/hf_cache
     
+    # Reranker (BGE)
+    - RERANKER_MODEL_PATH=/app/models/BAAI/models--BAAI--bge-reranker-v2-m3
+    - RERANKER_REPO_ID=BAAI/bge-reranker-v2-m3
+    - RERANKER_USE_FP16=true
+    - RERANKER_BATCH_SIZE=32
+    - RERANKER_MAX_LENGTH=512
+    - RERANKER_LIMIT=30
+    
+    # MMR Settings
+    - MMR_FETCH_K=200
+    - MMR_LAMBDA_MULT=0.8
+    
+    # Retrieval Settings
+    - FAISS_WEIGHT=0.6
+    - BM25_WEIGHT=0.4
+    - SPARSE_RETRIEVAL_RATIO=0.2
+    - MIN_SPARSE_RESULTS=1
+    
+    # Quality Settings
+    - SIMILARITY_THRESHOLD=0.5
+    - MIN_DOCS_REQUIRED=3
+    
     # HyDE
-    - USE_HYDE=False
+    - USE_HYDE=True
+    
+    # Streaming
+    - STREAM_CHAR_DELAY=0.02
+    - STREAM_CHUNK_SIZE=3
+    - STREAM_SOURCE_DELAY=0.3
 ```
 
 ---
 
-## 🧠 HyDE Configuration
+## 🎛️ RAG Configuration
 
-### What is HyDE?
+### HyDE Configuration
 
-HyDE (Hypothetical Document Embeddings) is a query transformation technique that:
-1. Takes the user's question
-2. Asks the LLM to generate a hypothetical document that would contain the answer
-3. Uses this hypothetical document for semantic search instead of the original query
-4. Improves retrieval quality by bridging the vocabulary gap between queries and documents
-
-### Enabling HyDE
+HyDE (Hypothetical Document Embeddings) improves retrieval quality by generating a hypothetical document from the query.
 
 ```yaml
-environment:
-  - USE_HYDE=True  # Enable HyDE
+- USE_HYDE=True  # Enable HyDE fallback
 ```
-
-### When to Enable HyDE
 
 | Scenario | Recommendation |
 |----------|----------------|
@@ -345,24 +492,87 @@ environment:
 | Ambiguous queries | Enable HyDE |
 | Technical/domain-specific questions | Enable HyDE |
 | Long, well-formed questions | Disable HyDE |
-| Low latency requirements | Disable HyDE |
-| Simple, direct questions | Disable HyDE |
+
+### MMR Configuration
+
+MMR (Maximum Marginal Relevance) balances relevance and diversity:
+
+```
+MMR Score = λ × Relevance - (1-λ) × Diversity
+```
+
+| Lambda | Meaning | Use Case |
+|--------|---------|----------|
+| **0.3** | High diversity | Broad topics, different perspectives |
+| **0.5** | Balanced | Default for most cases |
+| **0.7** | High relevance | Specific fact-finding |
+| **0.8** | Very high relevance | Focused, specific queries |
+
+```yaml
+- MMR_LAMBDA_MULT=0.8  # High relevance focus
+- MMR_FETCH_K=200      # Number of candidates
+```
+
+### Quality Thresholds
+
+```yaml
+- SIMILARITY_THRESHOLD=0.5  # Minimum score to pass quality check
+- MIN_DOCS_REQUIRED=3       # Minimum documents above threshold
+```
+
+### Sparse Retrieval Ratio
+
+```yaml
+- SPARSE_RETRIEVAL_RATIO=0.2  # 20% of results from BM25
+- MIN_SPARSE_RESULTS=1        # Minimum sparse results
+```
 
 ---
 
-## 📊 Event Flow
+## 📡 WebSocket Streaming
 
-### User Request Flow
+### Connection
+
 ```
-User → Frontend → Gateway → Kafka → LLM Service → Hybrid Retrieval → 
-WebSocket → Frontend (Real-time streaming)
+ws://localhost:8001/ws/{user_id}
 ```
 
-### Document Ingestion Flow
+### Sending a Chat Message
+
+```json
+{
+    "type": "chat",
+    "conversation_id": "abc-123",
+    "prompt": "What is RAG?",
+    "file_ids": ["doc-1", "doc-2"],
+    "retrieval_k": 20,
+    "similarity_threshold": 0.5,
+    "top_k": 5,
+    "use_hyde": true,
+    "use_mmr": true,
+    "mmr_lambda_mult": 0.8
+}
 ```
-User → Frontend → Gateway → Kafka → LLM Service → 
-Process Document (Chunk + Embed + Index) → 
-Kafka → Chat Service → Database → Frontend
+
+### Receiving Chunks
+
+```json
+{
+    "type": "answer_chunk",
+    "chunk": "RAG stands for ",
+    "chunk_index": 0,
+    "is_last": false
+}
+```
+
+### Receiving Completion
+
+```json
+{
+    "type": "answer",
+    "conversation_id": "abc-123",
+    "answer": "RAG stands for Retrieval Augmented Generation..."
+}
 ```
 
 ---
@@ -387,63 +597,21 @@ Kafka → Chat Service → Database → Frontend
 | GET | `/documents/{document_id}/status` | Get document status |
 | DELETE | `/documents/{document_id}` | Delete a document |
 
-### WebSocket
+### Health
 
-| Endpoint | Description |
-|----------|-------------|
-| `/ws/{user_id}` | WebSocket connection for real-time chat |
-
----
-
-## 🔌 WebSocket Streaming
-
-### Sending a Chat Message
-```json
-{
-    "type": "chat",
-    "conversation_id": "abc-123",
-    "prompt": "What is RAG?",
-    "file_ids": ["doc-1", "doc-2"]
-}
-```
-
-### Receiving a Chunk
-```json
-{
-    "type": "answer_chunk",
-    "chunk": "RAG stands for ",
-    "chunk_index": 0,
-    "is_last": false
-}
-```
-
----
-
-## 🚀 FastAPI Backend
-
-The backend is built with **FastAPI** and provides:
-
-- Automatic API Documentation at `/docs` (Swagger UI) and `/redoc`
-- WebSocket Support for real-time streaming
-- Pydantic Models for request/response validation
-- Dependency Injection with `fastapi-injector`
-
-### Health Check
-
-```bash
-curl http://localhost:8001/health
-# {"status": "online", "consumer_running": true}
-```
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/health` | Service health check |
 
 ---
 
 ## 🔒 Privacy First
 
-- ✅ 100% Local - No external API calls
-- ✅ Zero Cloud Costs - No per-token or per-request fees
-- ✅ Air-Gap Ready - Works in isolated environments
-- ✅ Data Sovereignty - Complete control over your data
-- ✅ No Data Leakage - Your documents never leave your infrastructure
+- ✅ **100% Local** - No external API calls
+- ✅ **Zero Cloud Costs** - No per-token or per-request fees
+- ✅ **Air-Gap Ready** - Works in isolated environments
+- ✅ **Data Sovereignty** - Complete control over your data
+- ✅ **No Data Leakage** - Your documents never leave your infrastructure
 
 ---
 
@@ -452,26 +620,82 @@ curl http://localhost:8001/health
 Contributions are welcome! Please feel free to submit a Pull Request.
 
 1. Fork the repository
-2. Create your feature branch
-3. Commit your changes
-4. Push to the branch
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
 ---
 
 ## 📄 License
 
-This project is licensed under the MIT License.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
 
 ## 🙏 Acknowledgments
 
-- [OLLAMA](https://ollama.com/) for local LLM inference
-- [Jina AI](https://jina.ai/) for embeddings
-- [BAAI](https://www.baai.ac.cn/) for BGE reranker
-- [FAISS](https://github.com/facebookresearch/faiss) for vector search
-- [Apache Kafka](https://kafka.apache.org/) for event streaming
-- [FastAPI](https://fastapi.tiangolo.com/) for the API framework
+- [OLLAMA](https://ollama.com/) - Local LLM inference
+- [Jina AI](https://jina.ai/) - Embeddings
+- [BAAI](https://www.baai.ac.cn/) - BGE reranker
+- [FAISS](https://github.com/facebookresearch/faiss) - Vector search
+- [LangGraph](https://langchain-ai.github.io/langgraph/) - Pipeline orchestration
+- [Apache Kafka](https://kafka.apache.org/) - Event streaming
+- [FastAPI](https://fastapi.tiangolo.com/) - API framework
 
 ---
+
+## 📊 Performance Metrics
+
+| Component | Metric | Value |
+|-----------|--------|-------|
+| **Dense Retrieval** | Chunks per query | 20 |
+| **Sparse Retrieval** | Chunks per query | 4 |
+| **Reranking** | Chunks processed | 24 |
+| **Generation** | Tokens per second | ~10-15 |
+| **Pipeline Latency** | End-to-end | ~5-10s |
+| **Chunk Streaming** | Characters per chunk | 3 |
+| **Chunk Delay** | Between chunks | 20ms |
+
+---
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+**OLLAMA not responding:**
+```bash
+# Check OLLAMA is running
+ollama ps
+# Restart OLLAMA
+ollama serve
+```
+
+**Kafka not starting:**
+```bash
+# Check Kafka logs
+docker-compose logs kafka
+# Restart Kafka
+docker-compose restart kafka
+```
+
+**Models not downloading:**
+```bash
+# Check network connectivity
+docker-compose exec rag-llm-service ping google.com
+# Check HuggingFace access
+docker-compose exec rag-llm-service curl -I https://huggingface.co
+```
+
+---
+
+## 📚 Additional Resources
+
+- [LangGraph Documentation](https://langchain-ai.github.io/langgraph/)
+- [OLLAMA Documentation](https://github.com/ollama/ollama)
+- [FAISS Documentation](https://github.com/facebookresearch/faiss)
+- [BGE Reranker](https://github.com/FlagOpen/FlagEmbedding)
+- [Apache Kafka Documentation](https://kafka.apache.org/documentation/)
+
+---
+

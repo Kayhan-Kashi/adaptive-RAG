@@ -424,7 +424,7 @@ class GenerationService:
     (BM25), or hybrid approaches that combine both methods for optimal results.
 
     **Sources:**
-    - 100_RAG_questions.pdf (Page 3)
+    - Intoduction_to_RAG.pdf (Page 3)
     - RAG_architecture.pdf (Page 5)
 
     ### Context:

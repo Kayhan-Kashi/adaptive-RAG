@@ -29,50 +29,72 @@ class CoreferenceResolver:
             return query
         
         # Check if query contains pronouns
-        pronouns = ["it", "this", "that", "these", "those", "they", "them", "he", "she", "his", "her"]
+        pronouns = ["it", "this", "that", "these", "those", "they", "them", "he", "she", "his", "her", "its"]
         has_pronoun = any(p in query.lower().split() for p in pronouns)
         
         if not has_pronoun:
             logger.debug("Query has no pronouns, returning original")
             return query
         
+        # Format history - ONLY USER QUESTIONS
         history_text = self._format_history(history)
         
-        # Improved prompt with better instructions and examples
+        # ✅ Log the prompt being sent
+        logger.info("=" * 60)
+        logger.info("📝 COREFERENCE RESOLUTION PROMPT:")
+        logger.info("=" * 60)
+        logger.info(f"User Questions History: {history_text}")
+        logger.info(f"Current Query: {query}")
+        logger.info("-" * 60)
+        
+        # ✅ IMPROVED SYSTEM PROMPT - STRICT OUTPUT FORMAT
         prompt = ChatPromptTemplate.from_template("""
-You are an expert at resolving pronouns and references in questions using conversation history.
+You are an expert at resolving pronouns in follow-up questions.
 
-### CONVERSATION HISTORY:
+### PREVIOUS USER QUESTIONS:
 {history}
 
 ### CURRENT QUESTION:
 {query}
 
 ### TASK:
-Replace ALL pronouns in the CURRENT QUESTION with the correct entities from the CONVERSATION HISTORY.
+Replace ALL pronouns in the CURRENT QUESTION with the correct entities from the PREVIOUS USER QUESTIONS.
 
-### IMPORTANT RULES:
-1. Identify the main entity/subject from the conversation history (e.g., RAG, GPT, Transformers)
-2. Replace ALL pronouns (it, they, them, this, that, these, those) with the correct entity name
-3. Keep the question structure exactly the same - only change the pronouns
-4. Output ONLY the rewritten question, nothing else
-5. Do NOT use markdown, code blocks, HTML tags, or any formatting
-6. Do NOT add extra text, explanations, or punctuation
+### CRITICAL RULES:
+1. Look at the user's PREVIOUS QUESTIONS to find the MAIN TOPIC
+2. Replace ALL pronouns (it, this, that, they, them, etc.) with the FULL ENTITY NAME
+3. PRESERVE the original question structure - only change the pronouns
+4. OUTPUT ONLY the rewritten question, NOTHING ELSE
 
-### EXAMPLES:
-History: User: "What is RAG?" Assistant: "RAG is Retrieval Augmented Generation..."
-Question: "What is it used for?"
-Output: What is RAG used for?
+### OUTPUT FORMAT - STRICT:
+- You MUST output ONLY the rewritten question
+- Do NOT add "Answer:", "Output:", "Result:", or any other prefixes
+- Do NOT add explanations, quotes, or extra text
+- Do NOT add a period at the end unless the original had one
+- The output must be a SINGLE sentence
 
-History: User: "Tell me about transformers." Assistant: "Transformers are neural networks..."
-Question: "How do they work?"
-Output: How do transformers work?
+### Examples:
+Previous Questions:
+- User: What is hallucination?
+Current Question: How does it cause problems?
+OUTPUT: How does hallucination cause problems?
 
-History: User: "What is GPT?" Assistant: "GPT is Generative Pre-trained Transformer..."
-Question: "What are the benefits?"
-Output: What are the benefits of GPT?
+Previous Questions:
+- User: What is RAG?
+Current Question: What are its benefits?
+OUTPUT: What are RAG's benefits?
 
-### REWRITTEN QUESTION (ONLY THE QUESTION, NO FORMATTING):
+Previous Questions:
+- User: What is hallucination?
+Current Question: By what tool can we solve it?
+OUTPUT: By what tool can we solve hallucination?
+
+Previous Questions:
+- User: What is RAG?
+Current Question: How it causes cost?
+OUTPUT: How does RAG cause cost?
+
+### REWRITTEN QUESTION (OUTPUT ONLY THIS, NOTHING ELSE):
 """)
         
         chain = prompt | self.llm_service.llm | StrOutputParser()
@@ -122,7 +144,22 @@ Output: What are the benefits of GPT?
         # Remove extra spaces
         response = re.sub(r'\s+', ' ', response)
         
-        # Strip quotes and whitespace
+        # Remove common prefixes
+        prefixes = [
+            "Answer:",
+            "Output:",
+            "Result:",
+            "Resolved:",
+            "Rewritten:",
+            "Question:",
+            "OUTPUT:",
+            "ANSWER:",
+        ]
+        for prefix in prefixes:
+            if response.lower().startswith(prefix.lower()):
+                response = response[len(prefix):].strip()
+        
+        # Remove quotes
         response = response.strip('"\' ')
         
         # If response is empty or just whitespace, return original
@@ -134,31 +171,56 @@ Output: What are the benefits of GPT?
             # Try to get the first sentence
             first_sentence = response.split('.')[0].strip()
             if len(first_sentence) > 10:
+                # Check if it still has extra text
+                if "Answer:" in first_sentence or "Output:" in first_sentence:
+                    return original_query
                 return first_sentence
             # If no good sentence, return original
             return original_query
         
+        # Final check: if response still contains "Answer:" or other prefixes
+        if "Answer:" in response or "Output:" in response or "Result:" in response:
+            # Try to extract just the question
+            for prefix in prefixes:
+                if prefix in response:
+                    parts = response.split(prefix, 1)
+                    if len(parts) > 1:
+                        response = parts[1].strip()
+                    break
+        
         return response
     
     def _format_history(self, history: List[Dict[str, str]]) -> str:
-        """Format conversation history for the prompt."""
+        """
+        Format conversation history - ONLY extract user questions.
+        Assistant responses are ignored because they can introduce confusion.
+        """
         if not history:
             return "No previous conversation."
         
-        # Take last 4 turns (8 messages max)
-        recent = history[-4:] if len(history) > 4 else history
-        formatted = []
+        user_questions = []
         
-        for i in range(0, len(recent), 2):
-            if i + 1 < len(recent):
-                user_msg = recent[i]
-                assistant_msg = recent[i + 1]
-                
-                if user_msg.get('role') == 'user':
-                    content = user_msg.get('content', '')
-                    formatted.append(f"User: {content[:500]}")
-                if assistant_msg.get('role') == 'assistant':
-                    content = assistant_msg.get('content', '')
-                    formatted.append(f"Assistant: {content[:500]}")
+        for msg in history:
+            role = msg.get('role', '').lower()
+            content = msg.get('content', '')
+            
+            # ✅ ONLY collect user messages
+            if role == 'user':
+                user_questions.append(f"User: {content[:500]}")
+            # Try other common formats
+            elif 'prompt' in msg:
+                user_questions.append(f"User: {msg.get('prompt', '')[:500]}")
+            elif 'user' in msg and not 'assistant' in msg:
+                user_questions.append(f"User: {msg.get('user', '')[:500]}")
         
-        return "\n".join(formatted)
+        # ✅ Take last 5 user questions maximum
+        if len(user_questions) > 5:
+            user_questions = user_questions[-5:]
+        
+        result = "\n".join(user_questions)
+        
+        if not result:
+            return "No previous conversation."
+        
+        logger.debug(f"User questions history: {result}")
+        return result

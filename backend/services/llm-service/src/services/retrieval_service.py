@@ -81,8 +81,8 @@ class RetrievalService:
         if file_ids:
             candidate_k = candidate_k * 2
         
-        faiss_results = self._faiss_search(query, candidate_k)
-        bm25_results = self._bm25_search(query, candidate_k)
+        faiss_results = self._faiss_search(query, candidate_k, file_ids)
+        bm25_results = self._bm25_search(query, candidate_k, file_ids)
         
         if file_ids:
             file_id_set = set(str(fid) for fid in file_ids)
@@ -113,8 +113,8 @@ class RetrievalService:
         if file_ids:
             candidate_k = k * 2
             
-        faiss_results = self._faiss_search(query, candidate_k)
-        bm25_results = self._bm25_search(query, candidate_k)
+        faiss_results = self._faiss_search(query, candidate_k, file_ids)
+        bm25_results = self._bm25_search(query, candidate_k, file_ids)
         
         if file_ids:
             file_id_set = set(str(fid) for fid in file_ids)
@@ -131,8 +131,8 @@ class RetrievalService:
         logger.info(f"✅ Returning {len(combined)} results")
         return combined
     
-    def _faiss_search_with_score(self, query: str, k: int) -> List[Document]:
-        """FAISS search with MMR"""
+    def _faiss_search_with_score(self, query: str, k: int, file_ids: Optional[List[str]] = None) -> List[Document]:
+        """FAISS search with MMR and file filtering."""
         vector_store = self.ingestion.get_vector_store()
         if vector_store is None:
             return []
@@ -148,11 +148,18 @@ class RetrievalService:
             }
         )
         results = retriever.invoke(query)
+        
+        # Filter by file_ids if provided
+        if file_ids:
+            file_id_set = set(str(fid) for fid in file_ids)
+            results = [doc for doc in results if str(doc.metadata.get('document_id')) in file_id_set]
+            logger.debug(f"📁 Filtered to {len(results)} results for file_ids: {file_ids}")
+        
         logger.debug(f"FAISS: {len(results)} results (k={k}, fetch_k={fetch_k})")
         return results
     
-    def _faiss_search(self, query: str, k: int) -> List[Document]:
-        """FAISS search with MMR"""
+    def _faiss_search(self, query: str, k: int, file_ids: Optional[List[str]] = None) -> List[Document]:
+        """FAISS search with MMR and file filtering."""
         vector_store = self.ingestion.get_vector_store()
         if vector_store is None:
             return []
@@ -168,16 +175,34 @@ class RetrievalService:
             }
         )
         results = retriever.invoke(query)
+        
+        # Filter by file_ids if provided
+        if file_ids:
+            file_id_set = set(str(fid) for fid in file_ids)
+            results = [doc for doc in results if str(doc.metadata.get('document_id')) in file_id_set]
+            logger.debug(f"📁 Filtered to {len(results)} results for file_ids: {file_ids}")
+        
         logger.debug(f"FAISS: {len(results)} results (k={k}, fetch_k={fetch_k})")
         return results
     
-    def _bm25_search(self, query: str, k: int) -> List[Document]:
-        """BM25 keyword search"""
+    def _bm25_search(self, query: str, k: int, file_ids: Optional[List[str]] = None) -> List[Document]:
+        """BM25 keyword search with file filtering."""
         all_chunks = self.ingestion.get_all_chunks()
         if not all_chunks:
             return []
         
-        bm25 = BM25Retriever.from_documents(all_chunks)
+        # Filter chunks by file_ids before building BM25
+        if file_ids:
+            file_id_set = set(str(fid) for fid in file_ids)
+            filtered_chunks = [
+                chunk for chunk in all_chunks 
+                if str(chunk.metadata.get('document_id')) in file_id_set
+            ]
+            logger.debug(f"📁 Filtered to {len(filtered_chunks)} chunks for BM25")
+        else:
+            filtered_chunks = all_chunks
+        
+        bm25 = BM25Retriever.from_documents(filtered_chunks)
         bm25.k = k
         results = bm25.invoke(query)
         logger.debug(f"BM25: {len(results)} results (k={k})")
@@ -367,20 +392,21 @@ class RetrievalService:
         faiss_weight: Optional[float] = None,
         bm25_weight: Optional[float] = None,
         faiss_k: Optional[int] = None,
-        bm25_k: Optional[int] = None
+        bm25_k: Optional[int] = None,
+        file_ids: Optional[List[str]] = None
     ) -> List[Document]:
-        """Search using ensemble retriever with custom weights."""
+        """Search using ensemble retriever with custom weights and file filtering."""
         faiss_weight = faiss_weight if faiss_weight is not None else self.default_faiss_weight
         bm25_weight = bm25_weight if bm25_weight is not None else self.default_bm25_weight
         faiss_k = faiss_k if faiss_k is not None else self.default_faiss_k
         bm25_k = bm25_k if bm25_k is not None else self.default_bm25_k
         
-        faiss_retriever = self._get_faiss_retriever(k=faiss_k)
-        bm25_retriever = self._get_bm25_retriever(k=bm25_k)
+        faiss_retriever = self._get_faiss_retriever(k=faiss_k, file_ids=file_ids)
+        bm25_retriever = self._get_bm25_retriever(k=bm25_k, file_ids=file_ids)
         
         if faiss_retriever is None or bm25_retriever is None:
             logger.warning("Ensemble retriever not available")
-            return self._faiss_search(query, k) or self._bm25_search(query, k)
+            return self._faiss_search(query, k, file_ids) or self._bm25_search(query, k, file_ids)
         
         ensemble = EnsembleRetriever(
             retrievers=[faiss_retriever, bm25_retriever],
@@ -388,10 +414,16 @@ class RetrievalService:
         )
         
         results = ensemble.invoke(query)
+        
+        # Final filtering in case some slipped through
+        if file_ids:
+            file_id_set = set(str(fid) for fid in file_ids)
+            results = [doc for doc in results if str(doc.metadata.get('document_id')) in file_id_set]
+        
         return results[:k]
     
-    def _get_faiss_retriever(self, k: int = 100):
-        """Get FAISS retriever with optimized MMR"""
+    def _get_faiss_retriever(self, k: int = 100, file_ids: Optional[List[str]] = None):
+        """Get FAISS retriever with optimized MMR."""
         vector_store = self.ingestion.get_vector_store()
         if vector_store is None:
             return None
@@ -405,13 +437,24 @@ class RetrievalService:
             }
         )
     
-    def _get_bm25_retriever(self, k: int = 100):
-        """Get BM25 retriever"""
+    def _get_bm25_retriever(self, k: int = 100, file_ids: Optional[List[str]] = None):
+        """Get BM25 retriever with file filtering."""
         all_chunks = self.ingestion.get_all_chunks()
         if not all_chunks:
             return None
         
-        bm25 = BM25Retriever.from_documents(all_chunks)
+        # Filter chunks by file_ids if provided
+        if file_ids:
+            file_id_set = set(str(fid) for fid in file_ids)
+            filtered_chunks = [
+                chunk for chunk in all_chunks 
+                if str(chunk.metadata.get('document_id')) in file_id_set
+            ]
+            logger.debug(f"📁 Filtered to {len(filtered_chunks)} chunks for BM25")
+        else:
+            filtered_chunks = all_chunks
+        
+        bm25 = BM25Retriever.from_documents(filtered_chunks)
         bm25.k = k
         return bm25
     
@@ -443,7 +486,7 @@ class RetrievalService:
         """Clear reranker score cache"""
         self.reranker_model.clear_cache()
     
-    def get_dense_retriever(self):
+    def get_dense_retriever(self, file_ids: Optional[List[str]] = None):
         """
         Get the dense retriever (FAISS with MMR) for direct use.
         Returns a configured retriever object.
@@ -461,7 +504,7 @@ class RetrievalService:
             }
         )
 
-    def get_sparse_retriever(self):
+    def get_sparse_retriever(self, file_ids: Optional[List[str]] = None):
         """
         Get the sparse retriever (BM25) for direct use.
         Returns a configured retriever object.
@@ -470,7 +513,18 @@ class RetrievalService:
         if not all_chunks:
             return None
         
-        bm25 = BM25Retriever.from_documents(all_chunks)
+        # Filter by file_ids if provided
+        if file_ids:
+            file_id_set = set(str(fid) for fid in file_ids)
+            filtered_chunks = [
+                chunk for chunk in all_chunks 
+                if str(chunk.metadata.get('document_id')) in file_id_set
+            ]
+            logger.debug(f"📁 Filtered to {len(filtered_chunks)} chunks for BM25")
+        else:
+            filtered_chunks = all_chunks
+        
+        bm25 = BM25Retriever.from_documents(filtered_chunks)
         bm25.k = self.default_sparse_k
         return bm25
 
@@ -518,40 +572,26 @@ class RetrievalService:
         mmr_lambda_mult: Optional[float] = None
     ) -> List[Document]:
         """
-        Dense vector retrieval with configurable MMR.
-        
-        Args:
-            query: User query
-            k: Number of results to return
-            file_ids: Optional list of file IDs to filter by
-            use_mmr: Whether to use MMR for diversity (default: True)
-            mmr_fetch_k: Number of candidates to fetch for MMR (default: from env)
-            mmr_lambda_mult: MMR lambda parameter (default: from env)
-        
-        Returns:
-            List of Document objects with dense_score in metadata
+        Dense vector retrieval with configurable MMR and file filtering.
         """
         logger.info(f"🔍 Dense retrieval: {query[:100]}...")
         logger.info(f"   MMR enabled: {use_mmr}")
+        if file_ids:
+            logger.info(f"   📁 Filtering to file_ids: {file_ids}")
         
-        # Get dense vector results
+        # Get dense vector results with file filtering
         if use_mmr:
             dense_results = self._dense_search_with_mmr(
                 query, k, 
                 fetch_k=mmr_fetch_k or self.mmr_fetch_k,
-                lambda_mult=mmr_lambda_mult or self.mmr_lambda_mult
+                lambda_mult=mmr_lambda_mult or self.mmr_lambda_mult,
+                file_ids=file_ids
             )
         else:
-            dense_results = self._dense_search_similarity(query, k)
-        
-        # Filter by file_ids if provided
-        if file_ids:
-            file_id_set = set(str(fid) for fid in file_ids)
-            dense_results = [
-                doc for doc in dense_results 
-                if str(doc.metadata.get('document_id')) in file_id_set
-            ]
-            logger.info(f"📁 Filtered to {len(dense_results)} dense results")
+            dense_results = self._dense_search_similarity(
+                query, k,
+                file_ids=file_ids
+            )
         
         # Add rank-based scores (normalized 0-1)
         for i, doc in enumerate(dense_results):
@@ -582,8 +622,15 @@ class RetrievalService:
         scores = [doc.metadata.get('dense_score', 0.0) for doc in docs]
         return docs, scores
 
-    def _dense_search_with_mmr(self, query: str, k: int, fetch_k: int, lambda_mult: float) -> List[Document]:
-        """Dense search with MMR for diversity."""
+    def _dense_search_with_mmr(
+        self, 
+        query: str, 
+        k: int, 
+        fetch_k: int, 
+        lambda_mult: float,
+        file_ids: Optional[List[str]] = None
+    ) -> List[Document]:
+        """Dense search with MMR for diversity and file filtering."""
         vector_store = self.ingestion.get_vector_store()
         if vector_store is None:
             return []
@@ -597,11 +644,26 @@ class RetrievalService:
             }
         )
         results = retriever.invoke(query)
+        
+        # Filter by file_ids if provided
+        if file_ids:
+            file_id_set = set(str(fid) for fid in file_ids)
+            results = [
+                doc for doc in results 
+                if str(doc.metadata.get('document_id')) in file_id_set
+            ]
+            logger.debug(f"📁 Filtered to {len(results)} dense results for file_ids: {file_ids}")
+        
         logger.debug(f"Dense (MMR): {len(results)} results (k={k}, fetch_k={fetch_k}, lambda={lambda_mult})")
         return results
 
-    def _dense_search_similarity(self, query: str, k: int) -> List[Document]:
-        """Simple similarity search without MMR."""
+    def _dense_search_similarity(
+        self, 
+        query: str, 
+        k: int,
+        file_ids: Optional[List[str]] = None
+    ) -> List[Document]:
+        """Simple similarity search without MMR with file filtering."""
         vector_store = self.ingestion.get_vector_store()
         if vector_store is None:
             return []
@@ -610,16 +672,27 @@ class RetrievalService:
         results_with_scores = vector_store.similarity_search_with_score(query, k=k)
         results = [doc for doc, _ in results_with_scores]
         
+        # Filter by file_ids if provided
+        if file_ids:
+            file_id_set = set(str(fid) for fid in file_ids)
+            results = [
+                doc for doc in results 
+                if str(doc.metadata.get('document_id')) in file_id_set
+            ]
+            logger.debug(f"📁 Filtered to {len(results)} dense results for file_ids: {file_ids}")
+        
         # Store raw scores in metadata
         for doc, score in results_with_scores:
-            doc.metadata['dense_score_raw'] = score
+            if doc in results:  # Only store scores for filtered results
+                doc.metadata['dense_score_raw'] = score
         
         logger.debug(f"Dense (Similarity): {len(results)} results (k={k})")
         return results
 
-    def _sparse_search(self, query: str, k: int) -> List[Document]:
-        """Sparse (BM25) search."""
-        return self._bm25_search(query, k)
+    def _sparse_search(self, query: str, k: int, file_ids: Optional[List[str]] = None) -> List[Document]:
+        """Sparse (BM25) search with file filtering."""
+        results = self._bm25_search(query, k, file_ids)
+        return results
 
     def evaluate_retrieval_quality(
         self,
@@ -959,29 +1032,14 @@ class RetrievalService:
         file_ids: Optional[List[str]] = None
     ) -> List[Document]:
         """
-        Sparse (BM25) retrieval.
-        
-        Args:
-            query: User query
-            k: Number of results to return
-            file_ids: Optional list of file IDs to filter by
-        
-        Returns:
-            List of Document objects with sparse_score in metadata
+        Sparse (BM25) retrieval with file filtering.
         """
         logger.info(f"🔍 Sparse retrieval: {query[:100]}...")
-        
-        # Get BM25 results
-        sparse_results = self._sparse_search(query, k)
-        
-        # Filter by file_ids if provided
         if file_ids:
-            file_id_set = set(str(fid) for fid in file_ids)
-            sparse_results = [
-                doc for doc in sparse_results 
-                if str(doc.metadata.get('document_id')) in file_id_set
-            ]
-            logger.info(f"📁 Filtered to {len(sparse_results)} sparse results")
+            logger.info(f"   📁 Filtering to file_ids: {file_ids}")
+        
+        # Get BM25 results with file filtering
+        sparse_results = self._sparse_search(query, k, file_ids)
         
         # Add rank-based scores (normalized 0-1)
         for i, doc in enumerate(sparse_results):
@@ -1132,18 +1190,23 @@ class RetrievalService:
         if file_ids:
             candidate_k = candidate_k * 2
         
-        # Get results with configurable MMR
+        # Get results with configurable MMR and file filtering
         if use_mmr:
             dense_results = self._dense_search_with_mmr(
                 query, candidate_k,
                 fetch_k=mmr_fetch_k or self.mmr_fetch_k,
-                lambda_mult=mmr_lambda_mult or self.mmr_lambda_mult
+                lambda_mult=mmr_lambda_mult or self.mmr_lambda_mult,
+                file_ids=file_ids
             )
         else:
-            dense_results = self._dense_search_similarity(query, candidate_k)
+            dense_results = self._dense_search_similarity(
+                query, candidate_k,
+                file_ids=file_ids
+            )
         
-        sparse_results = self._sparse_search(query, candidate_k)
+        sparse_results = self._sparse_search(query, candidate_k, file_ids)
         
+        # Final filtering (safety check)
         if file_ids:
             file_id_set = set(str(fid) for fid in file_ids)
             dense_results = [d for d in dense_results if str(d.metadata.get('document_id')) in file_id_set]

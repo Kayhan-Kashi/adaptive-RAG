@@ -12,7 +12,7 @@ class QueryState(Enum):
     def get_thresholds() -> Dict[str, int]:
         return {
             "short_threshold": 40,
-            "long_threshold": 70
+            "long_threshold": 90
         }
     
     @classmethod

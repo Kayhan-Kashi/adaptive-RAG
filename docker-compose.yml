@@ -97,7 +97,7 @@ services:
       environment:
         - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
         - CONSUMER_GROUP=llm-worker-group
-        - OLLAMA_MODEL=gemma3:12b-it-qat
+        - OLLAMA_MODEL=hf.co/unsloth/gemma-3-12b-it-GGUF:Q3_K_M
         - OLLAMA_BASE_URL=http://host.docker.internal:11434
         - OLLAMA_TEMPERATURE=0.3
         - MODEL_PATH=/app/models/snapshot/jina-embeddings-v3

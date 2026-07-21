@@ -47,7 +47,7 @@ class CoreferenceResolver:
         logger.info(f"Current Query: {query}")
         logger.info("-" * 60)
         
-        # ✅ IMPROVED SYSTEM PROMPT - STRICT OUTPUT FORMAT
+        # ✅ IMPROVED SYSTEM PROMPT WITH LENGTH CONSTRAINT
         prompt = ChatPromptTemplate.from_template("""
 You are an expert at resolving pronouns in follow-up questions.
 
@@ -64,35 +64,49 @@ Replace ALL pronouns in the CURRENT QUESTION with the correct entities from the 
 1. Look at the user's PREVIOUS QUESTIONS to find the MAIN TOPIC
 2. Replace ALL pronouns (it, this, that, they, them, etc.) with the FULL ENTITY NAME
 3. PRESERVE the original question structure - only change the pronouns
-4. OUTPUT ONLY the rewritten question, NOTHING ELSE
+4. Keep the question CONCISE - between 40 to 80 characters
+5. Do NOT add extra words, explanations, or rephrase the question
+6. OUTPUT ONLY the rewritten question, NOTHING ELSE
 
 ### OUTPUT FORMAT - STRICT:
 - You MUST output ONLY the rewritten question
+- The question should be 40-80 characters long (concise)
 - Do NOT add "Answer:", "Output:", "Result:", or any other prefixes
 - Do NOT add explanations, quotes, or extra text
-- Do NOT add a period at the end unless the original had one
-- The output must be a SINGLE sentence
+- Do NOT expand the question into multiple sentences or paragraphs
+- Keep it as a SINGLE short sentence
 
 ### Examples:
 Previous Questions:
 - User: What is hallucination?
 Current Question: How does it cause problems?
 OUTPUT: How does hallucination cause problems?
+✅ Length: 39 characters (concise)
 
 Previous Questions:
 - User: What is RAG?
 Current Question: What are its benefits?
 OUTPUT: What are RAG's benefits?
+✅ Length: 25 characters (concise)
 
 Previous Questions:
 - User: What is hallucination?
 Current Question: By what tool can we solve it?
 OUTPUT: By what tool can we solve hallucination?
+✅ Length: 44 characters (concise)
 
 Previous Questions:
 - User: What is RAG?
 Current Question: How it causes cost?
 OUTPUT: How does RAG cause cost?
+✅ Length: 27 characters (concise)
+
+❌ BAD EXAMPLES (TOO LONG):
+Previous Questions:
+- User: What is RAG?
+Current Question: Can you explain it to me?
+BAD OUTPUT: Can you explain Retrieval Augmented Generation to me in detail please? 
+❌ Too long and adds extra words
 
 ### REWRITTEN QUESTION (OUTPUT ONLY THIS, NOTHING ELSE):
 """)
@@ -108,6 +122,9 @@ OUTPUT: How does RAG cause cost?
             # Clean the response
             resolved = self._clean_response(resolved, query)
             
+            # ✅ Enforce length constraint
+            resolved = self._enforce_length_constraint(resolved, query)
+            
             # Validate the result
             if resolved and resolved != query and len(resolved) > 3:
                 logger.info(f"Resolved: '{query}' → '{resolved}'")
@@ -119,6 +136,44 @@ OUTPUT: How does RAG cause cost?
         except Exception as e:
             logger.error(f"Coreference resolution failed: {e}")
             return query
+    
+    def _enforce_length_constraint(self, resolved: str, original_query: str) -> str:
+        """
+        Enforce length constraint on resolved query.
+        If too long (>80 chars), extract the core question.
+        If too short (<20 chars), keep as is but log warning.
+        """
+        if not resolved:
+            return original_query
+        
+        # If already within reasonable length (20-80 chars)
+        if 20 <= len(resolved) <= 80:
+            return resolved
+        
+        # If too short (less than 20 chars), it might be incomplete
+        if len(resolved) < 20:
+            logger.debug(f"Resolved query too short ({len(resolved)} chars): '{resolved}'")
+            return resolved if len(resolved) > 5 else original_query
+        
+        # If too long (more than 80 chars), try to extract first sentence
+        if len(resolved) > 80:
+            logger.debug(f"Resolved query too long ({len(resolved)} chars), extracting first sentence")
+            
+            # Split by periods, question marks, or exclamation points
+            sentences = re.split(r'[.!?]\s+', resolved)
+            if sentences:
+                first_sentence = sentences[0].strip()
+                # If first sentence is still too long, truncate
+                if len(first_sentence) > 80:
+                    # Try to truncate at a comma or space
+                    truncate_at = first_sentence[:80].rfind(' ')
+                    if truncate_at > 40:
+                        first_sentence = first_sentence[:truncate_at] + "?"
+                    else:
+                        first_sentence = first_sentence[:80] + "?"
+                return first_sentence
+        
+        return resolved
     
     def _clean_response(self, response: str, original_query: str) -> str:
         """

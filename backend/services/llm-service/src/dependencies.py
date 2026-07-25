@@ -20,6 +20,8 @@ from src.graph.orchestrator_nodes import OrchestratorNodes
 from src.graph.orchestrator_graph import OrchestratorGraph
 from src.services.query_rewriting_service import QueryRewritingService
 from src.handlers.prompt_requested_graph_handler import PromptAnswerRequestedHandler
+from src.services.evaluation_service import EvaluationService
+
 
 
 def get_kafka_producer() -> KafkaProducer:
@@ -60,6 +62,9 @@ class DependencyInjection(Module):
         binder.bind(QueryRewritingService, scope=SingletonScope)
         binder.bind(OrchestratorNodes, scope=SingletonScope)
         binder.bind(OrchestratorGraph, scope=SingletonScope)
+        binder.bind(EvaluationService, scope=SingletonScope)
+
+        
 
 
 injector = Injector([DependencyInjection()])

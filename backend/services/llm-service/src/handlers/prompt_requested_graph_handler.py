@@ -1,3 +1,5 @@
+# src/handlers/prompt_requested_graph_handler.py
+
 import time
 import logging
 from typing import Optional, Any, AsyncGenerator
@@ -47,12 +49,21 @@ class PromptAnswerRequestedHandler:
             mmr_fetch_k = getattr(event, 'mmr_fetch_k', 200)
             mmr_lambda_mult = getattr(event, 'mmr_lambda_mult', 0.8)
             
+            # ============================================================
+            # NEW: Extract Evaluation settings from event
+            # ============================================================
+            enable_evaluation = getattr(event, 'enable_evaluation', True)
+            evaluation_threshold = getattr(event, 'evaluation_threshold', 0.7)
+            
             if file_ids:
                 logger.info(f"   📁 File IDs: {file_ids}")
             if history:
                 logger.info(f"   📜 History: {len(history)} messages")
             
             logger.info(f"   ⚙️ Config: threshold={similarity_threshold}, top_k={top_k}, hyde={use_hyde}, mmr={use_mmr}")
+            logger.info(f"   📊 Evaluation: {'Enabled' if enable_evaluation else 'Disabled'}")
+            if enable_evaluation:
+                logger.info(f"   📊 Evaluation Threshold: {evaluation_threshold}")
             logger.info("=" * 80)
             
             start_time = time.time()
@@ -79,7 +90,10 @@ class PromptAnswerRequestedHandler:
                 use_reranker=use_reranker,
                 use_mmr=use_mmr,
                 mmr_fetch_k=mmr_fetch_k,
-                mmr_lambda_mult=mmr_lambda_mult
+                mmr_lambda_mult=mmr_lambda_mult,
+                # NEW: Pass evaluation parameters
+                enable_evaluation=enable_evaluation,
+                evaluation_threshold=evaluation_threshold
             ):
                 event_type = stream_event.get("type")
                 
@@ -150,6 +164,25 @@ class PromptAnswerRequestedHandler:
                         logger.info(f"   📤 SOURCES CHUNK: {len(sources_text)} chars")
                         yield sources_chunk_event
                         total_chunks += 1
+                    
+                elif event_type == "evaluation":
+                    # NEW: Log evaluation results
+                    metrics = stream_event.get("metrics", {})
+                    passed = stream_event.get("passed", False)
+                    reason = stream_event.get("reason", "")
+                    metadata = stream_event.get("metadata", {})
+                    
+                    logger.info("=" * 80)
+                    logger.info("   📊 EVALUATION RESULTS")
+                    logger.info("=" * 80)
+                    logger.info(f"      Passed: {'✅' if passed else '❌'}")
+                    logger.info(f"      Reason: {reason}")
+                    logger.info(f"      Faithfulness: {metrics.get('faithfulness_score', 0.0):.2f}")
+                    logger.info(f"      Relevance: {metrics.get('relevance_score', 0.0):.2f}")
+                    logger.info(f"      Retrieval: {metrics.get('retrieval_score', 0.0):.2f}")
+                    logger.info(f"      Average: {metrics.get('average_score', 0.0):.2f}")
+                    logger.info(f"      Threshold: {metrics.get('threshold', 0.7)}")
+                    logger.info("=" * 80)
                     
                 elif event_type == "complete":
                     # Log completion metadata

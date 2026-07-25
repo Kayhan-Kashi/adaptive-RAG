@@ -6,12 +6,12 @@ from fastapi import HTTPException
 from injector import inject
 from sqlmodel import Session, select
 from datetime import datetime
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict
 import logging
 
-from common.events import PromptAnswerRequestedEvent
-from common.kafka.producer import KafkaProducer
-from database.models import Conversation, Dialogue
+from common.events import PromptAnswerRequestedEvent  #type: ignore
+from common.kafka.producer import KafkaProducer       #type: ignore
+from database.models import Conversation, Dialogue    #type: ignore
 
 logging.basicConfig(
     level=logging.INFO,
@@ -71,7 +71,7 @@ class ConversationService:
             dialogues = session.exec(
                 select(Dialogue)
                 .where(Dialogue.conversation_id == uuid.UUID(conversation_id))
-                .order_by(Dialogue.created_at.desc())
+                .order_by(Dialogue.created_at.desc())   #type: ignore
                 .limit(max_messages // 2 + 1)  
             ).all()
             
@@ -119,6 +119,11 @@ class ConversationService:
         use_mmr: bool = True,
         mmr_fetch_k: int = 200,
         mmr_lambda_mult: float = 0.8,
+        # ============================================================
+        # NEW: Evaluation Parameters
+        # ============================================================
+        enable_evaluation: bool = True,
+        evaluation_threshold: float = 0.7,
     ):
         """
         Create a new dialogue in a conversation and publish event to Kafka
@@ -143,6 +148,10 @@ class ConversationService:
             use_mmr: Whether to use MMR (default: True)
             mmr_fetch_k: MMR fetch candidates (default: 200)
             mmr_lambda_mult: MMR lambda parameter (default: 0.8)
+            
+            # Evaluation Parameters
+            enable_evaluation: Whether to run LLM-as-Judge evaluation (default: True)
+            evaluation_threshold: Threshold for evaluation pass (default: 0.7)
         """
         if not conversation_id:
             raise HTTPException(status_code=400, detail="Conversation ID is required")
@@ -161,8 +170,8 @@ class ConversationService:
                 conversation_id=uuid.UUID(conversation_id),
                 prompt=prompt,
                 answer=answer if answer else "",
-                is_complete=False,
-                chunk_count=0
+                is_complete=False,  #type: ignore
+                chunk_count=0       #type: ignore
             )
             session.add(dialogue)
             session.commit()
@@ -175,6 +184,11 @@ class ConversationService:
             # Log RAG configuration
             logger.info(f"⚙️ RAG Config: retrieval_k={retrieval_k}, threshold={similarity_threshold}, top_k={top_k}")
             logger.info(f"   hyde={use_hyde}, mmr={use_mmr}, lambda={mmr_lambda_mult}")
+            
+            # Log evaluation settings
+            logger.info(f"📊 Evaluation: {'Enabled' if enable_evaluation else 'Disabled'}")
+            if enable_evaluation:
+                logger.info(f"   Evaluation Threshold: {evaluation_threshold}")
             
             history = None
             if include_history:
@@ -202,6 +216,9 @@ class ConversationService:
                     use_mmr=use_mmr,
                     mmr_fetch_k=mmr_fetch_k,
                     mmr_lambda_mult=mmr_lambda_mult,
+                    # Pass evaluation parameters
+                    enable_evaluation=enable_evaluation,
+                    evaluation_threshold=evaluation_threshold,
                 )
             else:
                 logger.warning(f"⚠️ Kafka producer not available, event not published for dialogue: {dialogue.id}")
@@ -241,6 +258,11 @@ class ConversationService:
         use_mmr: bool = True,
         mmr_fetch_k: int = 200,
         mmr_lambda_mult: float = 0.8,
+        # ============================================================
+        # NEW: Evaluation Parameters
+        # ============================================================
+        enable_evaluation: bool = True,
+        evaluation_threshold: float = 0.7,
     ):
         """
         Publish prompt request event to Kafka with all RAG configuration.
@@ -263,6 +285,8 @@ class ConversationService:
             use_mmr: Whether to use MMR
             mmr_fetch_k: MMR fetch candidates
             mmr_lambda_mult: MMR lambda parameter
+            enable_evaluation: Whether to run LLM-as-Judge evaluation
+            evaluation_threshold: Threshold for evaluation pass
         """
         try:
             prompt_event = PromptAnswerRequestedEvent(
@@ -284,6 +308,9 @@ class ConversationService:
                 use_mmr=use_mmr,
                 mmr_fetch_k=mmr_fetch_k,
                 mmr_lambda_mult=mmr_lambda_mult,
+                # Evaluation Configuration
+                enable_evaluation=enable_evaluation,
+                evaluation_threshold=evaluation_threshold,
             )
             
             logger.info(f"📤 Publishing Kafka event for dialogue: {dialogue.id}")
@@ -295,8 +322,11 @@ class ConversationService:
                 logger.info(f"   History messages: {len(history)}")
             logger.info(f"   RAG Config: retrieval_k={retrieval_k}, threshold={similarity_threshold}")
             logger.info(f"   HyDE={use_hyde}, MMR={use_mmr}, lambda={mmr_lambda_mult}")
+            logger.info(f"   Evaluation: {'Enabled' if enable_evaluation else 'Disabled'}")
+            if enable_evaluation:
+                logger.info(f"   Evaluation Threshold: {evaluation_threshold}")
             
-            result = self.kafka_producer.produce(event=prompt_event, key=conversation_id)
+            result = self.kafka_producer.produce(event=prompt_event, key=conversation_id)  #type: ignore
             
             logger.info(f"✅ Kafka event published successfully for dialogue: {dialogue.id}")
             logger.info(f"   Event ID: {prompt_event.event_id}")
@@ -346,7 +376,7 @@ class ConversationService:
             if is_last:
                 dialogue.is_complete = True
                 dialogue.completed_at = datetime.utcnow()
-                logger.info(f"✅ Dialogue {dialogue_id} completed with {dialogue.chunk_count} chunks")
+                logger.info(f"✅ Dialogue {dialogue_id} completed with {dialogue.chunk_count} chunks")  #type: ignore
             else:
                 logger.info(f"✅ Dialogue {dialogue_id} chunk {chunk_index} appended")
             
@@ -375,7 +405,7 @@ class ConversationService:
             dialogues = session.exec(
                 select(Dialogue)
                 .where(Dialogue.conversation_id == uuid.UUID(conversation_id))
-                .order_by(Dialogue.created_at)
+                .order_by(Dialogue.created_at)  #type: ignore
             ).all()
             
             logger.info(f"📖 Retrieved conversation {conversation_id} with {len(dialogues)} dialogues")
@@ -406,7 +436,7 @@ class ConversationService:
             conversations = session.exec(
                 select(Conversation)
                 .where(Conversation.user_id == user_uuid)
-                .order_by(Conversation.created_at.desc())
+                .order_by(Conversation.created_at.desc())  #type: ignore
             ).all()
             
             logger.info(f"📋 Retrieved {len(conversations)} conversations for user: {user_id}")
@@ -483,7 +513,7 @@ class ConversationService:
             dialogues = session.exec(
                 select(Dialogue)
                 .where(Dialogue.conversation_id == uuid.UUID(conversation_id))
-                .order_by(Dialogue.created_at.desc())
+                .order_by(Dialogue.created_at.desc())  #type: ignore
                 .limit(limit)
                 .offset(offset)
             ).all()
@@ -495,11 +525,11 @@ class ConversationService:
                     "id": d.id,
                     "prompt": d.prompt,
                     "answer": d.answer,
-                    "chunk_count": d.chunk_count,
-                    "is_complete": d.is_complete,
+                    "chunk_count": d.chunk_count,  #type: ignore
+                    "is_complete": d.is_complete,  #type: ignore
                     "created_at": d.created_at,
                     "updated_at": d.updated_at,
-                    "completed_at": d.completed_at
+                    "completed_at": d.completed_at  #type: ignore
                 } for d in dialogues
             ]
         except ValueError:
@@ -521,11 +551,11 @@ class ConversationService:
                 "conversation_id": dialogue.conversation_id,
                 "prompt": dialogue.prompt,
                 "answer": dialogue.answer,
-                "chunk_count": dialogue.chunk_count,
-                "is_complete": dialogue.is_complete,
+                "chunk_count": dialogue.chunk_count, #type: ignore
+                "is_complete": dialogue.is_complete, #type: ignore
                 "created_at": dialogue.created_at,
                 "updated_at": dialogue.updated_at,
-                "completed_at": dialogue.completed_at
+                "completed_at": dialogue.completed_at #type: ignore
             }
         except ValueError:
             logger.error(f"❌ Invalid UUID format for dialogue_id: {dialogue_id}")
@@ -542,11 +572,11 @@ class ConversationService:
             dialogues = session.exec(
                 select(Dialogue)
                 .where(Dialogue.conversation_id == uuid.UUID(conversation_id))
-                .order_by(Dialogue.created_at)
+                .order_by(Dialogue.created_at) #type: ignore
             ).all()
             
-            total_chunks = sum(d.chunk_count or 0 for d in dialogues)
-            completed_dialogues = sum(1 for d in dialogues if d.is_complete)
+            total_chunks = sum(d.chunk_count or 0 for d in dialogues) #type: ignore
+            completed_dialogues = sum(1 for d in dialogues if d.is_complete) #type: ignore
             
             return {
                 "id": conversation.id,

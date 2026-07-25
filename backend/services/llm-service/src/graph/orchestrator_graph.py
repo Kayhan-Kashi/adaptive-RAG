@@ -1,3 +1,5 @@
+# src/orchestrator/orchestrator_graph.py
+
 import logging
 from typing import Dict, Any, Optional, List, AsyncGenerator
 from injector import inject
@@ -21,6 +23,7 @@ class OrchestratorGraph:
     6. Quality Evaluation + Sparse Attachment - Check threshold, attach sparse if passed
     7. Reranking - Rerank ALL documents with cross-encoder
     8. Generation - Generate final answer from retrieved documents
+    9. Evaluation - Evaluate answer quality (faithfulness, relevance, retrieval quality)
     """
     
     @inject
@@ -40,6 +43,7 @@ class OrchestratorGraph:
         workflow.add_node("quality_evaluation", self.nodes.quality_evaluation)         #type: ignore
         workflow.add_node("rerank", self.nodes.rerank)                                 #type: ignore
         workflow.add_node("generation", self.nodes.generation)                         #type: ignore
+        workflow.add_node("evaluation", self.nodes.evaluation)                         #type: ignore 
         
         # Set entry point
         workflow.set_entry_point("coreference_resolution")
@@ -74,9 +78,10 @@ class OrchestratorGraph:
         workflow.add_edge("hyde_generation", "dense_retrieval")
         workflow.add_edge("dense_retrieval", "quality_evaluation")
         
-        # Rerank → Generation
+        # Rerank → Generation → Evaluation → END
         workflow.add_edge("rerank", "generation")
-        workflow.add_edge("generation", END)
+        workflow.add_edge("generation", "evaluation")  # ✅ NEW EDGE
+        workflow.add_edge("evaluation", END)          # ✅ NEW EDGE
         
         return workflow.compile()  #type: ignore
     
@@ -137,6 +142,8 @@ class OrchestratorGraph:
                 - use_mmr: Whether to use MMR (default: False)
                 - mmr_fetch_k: MMR fetch k (default: 200)
                 - mmr_lambda_mult: MMR lambda (default: 0.5)
+                - evaluation_threshold: Threshold for evaluation (default: 0.7)
+                - enable_evaluation: Whether to enable evaluation (default: True)
         """
         initial_state = self._prepare_initial_state(query, conversation_history, file_ids, **kwargs)
         
@@ -163,11 +170,13 @@ class OrchestratorGraph:
         This method:
         1. Runs the full pipeline (coreference → retrieval → rerank)
         2. Then uses generation_stream() to stream the answer character-by-character
+        3. Optionally evaluates the answer quality
         
         Yields DICT events:
         - {"type": "status", "status": str, "message": str, "metadata": Dict}
         - {"type": "chunk", "chunk": str, "chunk_index": int, "is_last": bool, "metadata": Dict}
         - {"type": "sources", "sources": List[Dict], "sources_text": str, "metadata": Dict}
+        - {"type": "evaluation", "metrics": Dict, "passed": bool, "metadata": Dict}  # ✅ NEW
         - {"type": "complete", "full_answer": str, "metadata": Dict}
         - {"type": "error", "error": str}
         """
@@ -186,7 +195,8 @@ class OrchestratorGraph:
                     "query": query,
                     "history_turns": len(conversation_history or []),
                     "use_hyde": initial_state.get("use_hyde", False),
-                    "use_mmr": initial_state.get("use_mmr", False)
+                    "use_mmr": initial_state.get("use_mmr", False),
+                    "enable_evaluation": initial_state.get("enable_evaluation", True)
                 }
             }
             
@@ -236,9 +246,9 @@ class OrchestratorGraph:
                     yield stream_event
                     
                 elif event_type == "sources":
-                    sources = stream_event.get("sources", [])
-                    citations = stream_event.get("citations", [])
-                    sources_used = stream_event.get("sources_used", [])
+                    sources = stream_event.get("sources", [])              #type: ignore
+                    citations = stream_event.get("citations", [])          #type: ignore
+                    sources_used = stream_event.get("sources_used", [])    #type: ignore
                     yield stream_event
                     
                 elif event_type == "complete":
@@ -255,6 +265,32 @@ class OrchestratorGraph:
                 elif event_type == "error":
                     yield stream_event
                     return
+            
+            # STEP 3: Evaluation (if enabled)
+            enable_evaluation = initial_state.get("enable_evaluation", True)
+            evaluation_result = final_state.get("evaluation_metrics", {})    #type: ignore
+            evaluation_passed = final_state.get("evaluation_passed", True)   #type: ignore
+            
+            if enable_evaluation and full_answer:
+                # Evaluation results are already in final_state from the evaluation node
+                eval_metrics = final_state.get("evaluation_metrics", {})
+                eval_passed = final_state.get("evaluation_passed", True)
+                eval_reason = final_state.get("evaluation_reason", "")
+                
+                # Yield evaluation event
+                yield {
+                    "type": "evaluation",
+                    "metrics": eval_metrics,
+                    "passed": eval_passed,
+                    "reason": eval_reason,
+                    "metadata": {
+                        "faithfulness_score": eval_metrics.get("faithfulness_score", 0.0),
+                        "relevance_score": eval_metrics.get("relevance_score", 0.0),
+                        "retrieval_score": eval_metrics.get("retrieval_score", 0.0),
+                        "average_score": eval_metrics.get("average_score", 0.0),
+                        "threshold": eval_metrics.get("threshold", 0.7)
+                    }
+                }
             
         except Exception as e:
             logger.error(f"❌ Pipeline streaming failed: {e}")
@@ -293,6 +329,10 @@ class OrchestratorGraph:
             "mmr_fetch_k": kwargs.get("mmr_fetch_k", 200),
             "mmr_lambda_mult": kwargs.get("mmr_lambda_mult", 0.5),
             
+            # ✅ NEW: Evaluation settings
+            "evaluation_threshold": kwargs.get("evaluation_threshold", 0.7),
+            "enable_evaluation": kwargs.get("enable_evaluation", True),
+            
             **kwargs  #type: ignore
         }
     
@@ -311,6 +351,9 @@ class OrchestratorGraph:
         if state.get('use_mmr'):
             logger.info(f"   MMR Fetch K: {state.get('mmr_fetch_k')}")
             logger.info(f"   MMR Lambda: {state.get('mmr_lambda_mult')}")
+        logger.info(f"   Evaluation: {'Enabled' if state.get('enable_evaluation', True) else 'Disabled'}")
+        if state.get('enable_evaluation', True):
+            logger.info(f"   Evaluation Threshold: {state.get('evaluation_threshold', 0.7)}")
         logger.info("=" * 80)
     
     def _prepare_response(self, state: OrchestratorState) -> Dict[str, Any]:
@@ -358,6 +401,12 @@ class OrchestratorGraph:
             "citations": state.get("citations", []),
             "retrieval_method": state.get("retrieval_method", "dense"),
             
+            # ✅ NEW: Evaluation results
+            "evaluation_metrics": state.get("evaluation_metrics", {}),
+            "evaluation_passed": state.get("evaluation_passed", True),
+            "evaluation_reason": state.get("evaluation_reason", ""),
+            "evaluation_threshold": state.get("evaluation_threshold", 0.7),
+            
             "pipeline_steps": state.get("pipeline_steps", [])
         }
     
@@ -371,5 +420,7 @@ class OrchestratorGraph:
             "generation_used": False,
             "sources": [],
             "citations": [],
+            "evaluation_passed": False,
+            "evaluation_metrics": {},
             "pipeline_steps": state.get("pipeline_steps", [])
         }

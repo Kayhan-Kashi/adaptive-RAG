@@ -45,6 +45,11 @@ function App() {
     use_mmr: true,
     mmr_fetch_k: 200,
     mmr_lambda_mult: 0.8,
+    // ============================================================
+    // NEW: Evaluation Settings
+    // ============================================================
+    enable_evaluation: true,
+    evaluation_threshold: 0.7,
   });
   const [showRagConfig, setShowRagConfig] = useState(false);
   
@@ -181,7 +186,7 @@ function App() {
     };
   }, [user, currentView, connectWebSocket]);
 
-  // ✅ Updated sendWebSocketMessage to include RAG config
+  // ✅ Updated sendWebSocketMessage to include RAG config and evaluation
   const sendWebSocketMessage = useCallback((conversationId, prompt, fileIds = [], config = {}) => {
     const message = {
       type: 'chat',
@@ -202,6 +207,11 @@ function App() {
       use_mmr: config.use_mmr !== undefined ? config.use_mmr : ragConfig.use_mmr,
       mmr_fetch_k: config.mmr_fetch_k || ragConfig.mmr_fetch_k,
       mmr_lambda_mult: config.mmr_lambda_mult || ragConfig.mmr_lambda_mult,
+      // ============================================================
+      // NEW: Evaluation Parameters
+      // ============================================================
+      enable_evaluation: config.enable_evaluation !== undefined ? config.enable_evaluation : ragConfig.enable_evaluation,
+      evaluation_threshold: config.evaluation_threshold || ragConfig.evaluation_threshold,
     };
     
     console.log('📤 Sending WebSocket message with RAG config:', {
@@ -211,6 +221,8 @@ function App() {
       use_hyde: message.use_hyde,
       use_mmr: message.use_mmr,
       mmr_lambda_mult: message.mmr_lambda_mult,
+      enable_evaluation: message.enable_evaluation,
+      evaluation_threshold: message.evaluation_threshold,
     });
     
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -322,7 +334,7 @@ function App() {
     }
   };
 
-  // ✅ Updated sendMessage with RAG config
+  // ✅ Updated sendMessage with RAG config and evaluation
   const sendMessage = () => {
     if (!inputMessage.trim() || !currentConversation) return;
 
@@ -543,6 +555,38 @@ function App() {
               step="0.05"
             />
           </div>
+          {/* ============================================================ */}
+          {/* NEW: Evaluation Settings */}
+          {/* ============================================================ */}
+          <div className="config-row config-full-width">
+            <label>Evaluation</label>
+            <div className="toggle-group">
+              <button 
+                className={ragConfig.enable_evaluation ? 'active' : ''}
+                onClick={() => handleRagConfigChange('enable_evaluation', true)}
+              >On</button>
+              <button 
+                className={!ragConfig.enable_evaluation ? 'active' : ''}
+                onClick={() => handleRagConfigChange('enable_evaluation', false)}
+              >Off</button>
+            </div>
+            <span className="config-hint">LLM-as-Judge quality check</span>
+          </div>
+          {ragConfig.enable_evaluation && (
+            <div className="config-row config-full-width">
+              <label>Evaluation Threshold</label>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={ragConfig.evaluation_threshold}
+                onChange={(e) => handleRagConfigChange('evaluation_threshold', parseFloat(e.target.value))}
+                style={{ flex: 1 }}
+              />
+              <span className="config-value">{ragConfig.evaluation_threshold.toFixed(2)}</span>
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import Dict, Any, List, AsyncGenerator
 from injector import inject
@@ -8,6 +9,7 @@ from src.services.query_rewriting_service import QueryRewritingService
 from src.services.retrieval_service import RetrievalService
 from src.services.hyde_service import HyDEService
 from src.services.generation_service import GenerationService
+from src.services.evaluation_service import EvaluationService
 
 logger = logging.getLogger(__name__)
 
@@ -21,13 +23,15 @@ class OrchestratorNodes:
         query_rewriting_service: QueryRewritingService,
         retrieval_service: RetrievalService,
         hyde_service: HyDEService,
-        generation_service: GenerationService
+        generation_service: GenerationService,
+        evaluation_service: EvaluationService
     ):
         self.coreference_resolver = coreference_resolver
         self.query_rewriting_service = query_rewriting_service
         self.retrieval_service = retrieval_service
         self.hyde_service = hyde_service
         self.generation_service = generation_service
+        self.evaluation_service = evaluation_service
     
     # ============================================================
     # NODE 1: Coreference Resolution
@@ -644,3 +648,150 @@ class OrchestratorNodes:
                     "error": stream_event.get("error", "Unknown generation error")
                 }
                 return
+    
+    # ============================================================
+    # NODE 9: Evaluation (Quality Check after Generation)
+    # ============================================================
+    async def evaluation(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Evaluate the quality of the generated answer and retrieval.
+        
+        Evaluates:
+        - Faithfulness: Does the answer hallucinate?
+        - Relevance: Does the answer address the query?
+        - Retrieval Quality: Are the retrieved chunks relevant?
+        """
+        logger.info("=" * 60)
+        logger.info("📊 [Node 9] Quality Evaluation (LLM-as-Judge)")
+        logger.info("=" * 60)
+        
+        query = state.get("query", "")
+        answer = state.get("generated_answer", "")
+        documents = state.get("reranked_chunks", [])
+        evaluation_threshold = state.get("evaluation_threshold", 0.7)
+        enable_evaluation = state.get("enable_evaluation", True)
+        
+        if not enable_evaluation:
+            logger.info("   ⏭️ Evaluation disabled, skipping...")
+            return {
+                "evaluation_passed": True,
+                "evaluation_reason": "Evaluation disabled",
+                "evaluation_metrics": {
+                    "faithfulness_score": 1.0,
+                    "relevance_score": 1.0,
+                    "retrieval_score": 1.0,
+                    "average_score": 1.0,
+                    "threshold": evaluation_threshold,
+                    "passed": True
+                }
+            }
+        
+        if not answer:
+            logger.warning("   No answer to evaluate")
+            return {
+                "evaluation_passed": False,
+                "evaluation_reason": "No answer generated",
+                "evaluation_metrics": {}
+            }
+        
+        if not documents:
+            logger.warning("   No documents to evaluate retrieval quality")
+            # Still evaluate answer faithfulness and relevance
+            documents = []
+        
+        # Run evaluations in parallel
+        faithfulness_task = self.evaluation_service.evaluate_faithfulness(answer, documents)
+        relevance_task = self.evaluation_service.evaluate_answer_relevance(query, answer)
+        retrieval_task = self.evaluation_service.evaluate_retrieval_quality(query, documents)
+        
+        # Gather results with proper exception handling
+        results = await asyncio.gather(
+            faithfulness_task,
+            relevance_task,
+            retrieval_task,
+            return_exceptions=True
+        )
+        
+        # Unpack and normalize results
+        faithfulness = self._normalize_evaluation_result(results[0], "faithfulness")
+        relevance = self._normalize_evaluation_result(results[1], "relevance")
+        retrieval = self._normalize_evaluation_result(results[2], "retrieval")
+        
+        # Extract scores
+        faithfulness_score = faithfulness.get("score", 0.0)
+        relevance_score = relevance.get("score", 0.0)
+        retrieval_score = retrieval.get("score", 0.0)
+        
+        faithfulness_passed = faithfulness.get("is_faithful", False)
+        relevance_passed = relevance.get("is_relevant", False)
+        retrieval_passed = retrieval.get("is_good", False)
+        
+        # Calculate overall score
+        scores = [faithfulness_score, relevance_score, retrieval_score]
+        avg_score = sum(scores) / len(scores) if scores else 0.0
+        
+        # Check if evaluation passes
+        evaluation_passed = avg_score >= evaluation_threshold
+        
+        # Log results
+        logger.info(f"   Faithfulness: {faithfulness_score:.2f} - {'✅' if faithfulness_passed else '❌'}")
+        logger.info(f"   Relevance: {relevance_score:.2f} - {'✅' if relevance_passed else '❌'}")
+        logger.info(f"   Retrieval: {retrieval_score:.2f} - {'✅' if retrieval_passed else '❌'}")
+        logger.info(f"   Average Score: {avg_score:.2f} {'✅' if evaluation_passed else '❌'}")
+        logger.info(f"   Threshold: {evaluation_threshold}")
+        logger.info(f"   {'✅ PASSED' if evaluation_passed else '❌ FAILED'}")
+        
+        return {
+            "evaluation_faithfulness": faithfulness,
+            "evaluation_relevance": relevance,
+            "evaluation_retrieval": retrieval,
+            "evaluation_metrics": {
+                "faithfulness_score": faithfulness_score,
+                "faithfulness_passed": faithfulness_passed,
+                "faithfulness_reason": faithfulness.get("reason", ""),
+                "relevance_score": relevance_score,
+                "relevance_passed": relevance_passed,
+                "relevance_reason": relevance.get("reason", ""),
+                "retrieval_score": retrieval_score,
+                "retrieval_passed": retrieval_passed,
+                "retrieval_reason": retrieval.get("reason", ""),
+                "average_score": avg_score,
+                "threshold": evaluation_threshold,
+                "passed": evaluation_passed
+            },
+            "evaluation_passed": evaluation_passed,
+            "evaluation_reason": f"Average score: {avg_score:.2f} (threshold: {evaluation_threshold})",
+            "evaluation_threshold": evaluation_threshold
+        }
+    
+    def _normalize_evaluation_result(self, result: Any, metric_name: str) -> Dict[str, Any]:
+        """
+        Normalize evaluation result, handling exceptions and unexpected types.
+        
+        Args:
+            result: Result from asyncio.gather (could be dict or Exception)
+            metric_name: Name of the metric for logging
+        
+        Returns:
+            Normalized dict with score and status
+        """
+        if isinstance(result, Exception):
+            logger.warning(f"   ⚠️ {metric_name} evaluation failed: {result}")
+            return {
+                "score": 0.0,
+                f"is_{metric_name}": False,
+                "reason": f"Evaluation error: {str(result)}"
+            }
+        elif isinstance(result, dict):
+            # Ensure required keys exist
+            if "score" not in result:
+                result["score"] = 0.0
+            return result
+        else:
+            logger.warning(f"   ⚠️ {metric_name} evaluation returned unexpected type: {type(result)}")
+            return {
+                "score": 0.0,
+                f"is_{metric_name}": False,
+                "reason": f"Unexpected result type: {type(result)}"
+            }
+

@@ -1,7 +1,6 @@
 import logging
 import os
 import asyncio
-import re
 from typing import List, Dict, Any, Optional, AsyncGenerator
 from injector import inject
 from langchain_core.prompts import ChatPromptTemplate

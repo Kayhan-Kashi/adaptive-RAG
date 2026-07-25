@@ -1,3 +1,5 @@
+# src/orchestrator/orchestrator_state.py
+
 from typing import List, Optional, Dict, Any, TypedDict, Literal
 from langchain_core.documents import Document
 
@@ -33,6 +35,12 @@ class OrchestratorState(TypedDict, total=False):
     use_mmr: bool  # Whether to use MMR for dense retrieval (default: False)
     mmr_fetch_k: int  # Number of candidates to fetch for MMR (default: 200)
     mmr_lambda_mult: float  # MMR lambda parameter - controls diversity (0-1, default: 0.5)
+    
+    # ============================================================
+    # NEW: Evaluation Configuration
+    # ============================================================
+    enable_evaluation: bool  # Whether to enable LLM-as-Judge evaluation (default: True)
+    evaluation_threshold: float  # Threshold for evaluation pass (default: 0.7)
     
     # Node 1: Coreference Resolution
     resolved_query: str
@@ -105,6 +113,17 @@ class OrchestratorState(TypedDict, total=False):
     retrieval_method: Literal["dense", "hybrid", "hyde", "ensemble"]
     mmr_used_generation: bool  # Whether MMR was used (for generation metadata)
     sparse_attached_generation: bool  # Whether sparse was attached (for generation metadata)
+    
+    # ============================================================
+    # NEW: Node 9 - Evaluation Results
+    # ============================================================
+    evaluation_faithfulness: Dict[str, Any]  # Faithfulness evaluation results
+    evaluation_relevance: Dict[str, Any]  # Relevance evaluation results
+    evaluation_retrieval: Dict[str, Any]  # Retrieval quality evaluation results
+    evaluation_metrics: Dict[str, Any]  # Combined evaluation metrics
+    evaluation_passed: bool  # Whether evaluation passed the threshold
+    evaluation_reason: str  # Reason for evaluation result
+    evaluation_threshold_used: float  # Threshold used for evaluation
     
     # Node 9: Sparse Retrieval (standalone)
     sparse_retrieved_chunks: List[Document]

@@ -1,5 +1,3 @@
-# api/routes/websocket.py
-
 import logging
 from datetime import datetime
 from typing import List, Optional
@@ -7,9 +5,9 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
 from fastapi_injector import Injected
 from sqlmodel import Session
 
-from api.websocket.manager import connection_manager
-from database.sqlite_session import get_session
-from services.conversation_service import ConversationService
+from api.websocket.manager import connection_manager             #type: ignore
+from database.sqlite_session import get_session                  #type: ignore
+from services.conversation_service import ConversationService    #type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -89,11 +87,20 @@ async def websocket_endpoint(
                     mmr_fetch_k = data.get("mmr_fetch_k", 200)
                     mmr_lambda_mult = data.get("mmr_lambda_mult", 0.8)
                     
+                    # ============================================================
+                    # Extract Evaluation settings from WebSocket message
+                    # ============================================================
+                    enable_evaluation = data.get("enable_evaluation", True)
+                    evaluation_threshold = data.get("evaluation_threshold", 0.7)
+                    
                     logger.info(f"💬 Chat message from user {user_id} in conversation {conversation_id}")
                     logger.info(f"   Prompt: {prompt[:100]}...")
                     logger.info(f"   File IDs: {file_ids}")
                     logger.info(f"   ⚙️ RAG Config: retrieval_k={retrieval_k}, threshold={similarity_threshold}, top_k={top_k}")
                     logger.info(f"   HyDE={use_hyde}, MMR={use_mmr}, lambda={mmr_lambda_mult}")
+                    logger.info(f"   📊 Evaluation: {'Enabled' if enable_evaluation else 'Disabled'}")
+                    if enable_evaluation:
+                        logger.info(f"   📊 Evaluation Threshold: {evaluation_threshold}")
                     
                     connection_manager.register_conversation(conversation_id, user_id)
                     
@@ -117,6 +124,11 @@ async def websocket_endpoint(
                         use_mmr=use_mmr,
                         mmr_fetch_k=mmr_fetch_k,
                         mmr_lambda_mult=mmr_lambda_mult,
+                        # ============================================================
+                        # Pass evaluation parameters
+                        # ============================================================
+                        enable_evaluation=enable_evaluation,
+                        evaluation_threshold=evaluation_threshold,
                     )
                     
                     logger.info(f"📝 Dialogue created: {dialogue_id}")
@@ -135,6 +147,8 @@ async def websocket_endpoint(
                             "use_hyde": use_hyde,
                             "use_mmr": use_mmr,
                             "mmr_lambda_mult": mmr_lambda_mult,
+                            "enable_evaluation": enable_evaluation,
+                            "evaluation_threshold": evaluation_threshold,
                         },
                         "timestamp": datetime.utcnow().isoformat()
                     })
@@ -161,7 +175,7 @@ async def websocket_endpoint(
                         "error": str(e),
                         "timestamp": datetime.utcnow().isoformat()
                     })
-                except:
+                except:  # noqa: E722
                     pass
                 
     except Exception as e:

@@ -1,10 +1,9 @@
-from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, Query
+from fastapi import APIRouter, Depends, UploadFile, File, Form, Query
 from fastapi_injector import Injected
 from sqlmodel import Session
 from starlette import status
-from typing import List, Optional
 
-from api.schemas.document_schemas import (
+from api.schemas.document_schemas import (  #type: ignore
     DocumentStatusResponse,
     UploadDocumentResponse, 
     DocumentResponse, 
@@ -12,8 +11,8 @@ from api.schemas.document_schemas import (
     DeleteDocumentResponse, 
     DocumentStatsResponse
 )
-from database.sqlite_session import get_session
-from services.document_service import DocumentService
+from database.sqlite_session import get_session   #type: ignore
+from services.document_service import DocumentService  #type: ignore
 
 router = APIRouter(
     prefix="/documents",
@@ -88,12 +87,12 @@ async def get_document(
     )
     
     return DocumentResponse(
-        id=document.id,
-        name=document.name,
-        category=document.category,
-        path=document.path,
-        created_at=document.created_at,
-        status=document.status
+        id=document.id,                         #type: ignore
+        name=document.name,                     #type: ignore
+        category=document.category,             #type: ignore
+        path=document.path,                     #type: ignore
+        created_at=document.created_at,         #type: ignore
+        status=document.status                  #type: ignore
     )
 
 
@@ -126,12 +125,12 @@ async def get_document_status(
     )
     
     return DocumentStatusResponse(
-        id=document.id,
-        name=document.name,
-        status=document.status,
-        error_message=document.error_message,
-        indexed_at=document.indexed_at,
-        created_at=document.created_at
+        id=document.id,                    #type: ignore
+        name=document.name,                #type: ignore
+        status=document.status,              #type: ignore
+        error_message=document.error_message, #type: ignore
+        indexed_at=document.indexed_at,  #type: ignore
+        created_at=document.created_at  #type: ignore
     )
 
 
